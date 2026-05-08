@@ -1,0 +1,104 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.30.3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Build mod
+        run: pnpm build
+
+      - name: Validate proxy syntax
+        run: node --check proxy.js
+
+      - name: Prepare release package
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+          if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
+            RELEASE_TAG="${GITHUB_REF_NAME}"
+          else
+            RELEASE_TAG="v${PACKAGE_VERSION}-manual.${GITHUB_RUN_NUMBER}"
+          fi
+          PACKAGE_DIR="release/orbital-surveyor"
+          ZIP_NAME="orbital-surveyor-${RELEASE_TAG}.zip"
+
+          rm -rf release
+          mkdir -p "$PACKAGE_DIR"
+
+          cp dist/index.js "$PACKAGE_DIR/index.js"
+          cp dist/manifest.json "$PACKAGE_DIR/manifest.json"
+          cp proxy.js "$PACKAGE_DIR/proxy.js"
+          cp proxy.ps1 "$PACKAGE_DIR/proxy.ps1"
+          cp .env.example "$PACKAGE_DIR/.env.example"
+          cp README.md "$PACKAGE_DIR/README.md"
+
+          cd release
+          zip -r "$ZIP_NAME" orbital-surveyor
+
+          {
+            echo "zip_name=$ZIP_NAME"
+            echo "release_tag=$RELEASE_TAG"
+          } >> "$GITHUB_ENV"
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          TITLE="Orbital Surveyor ${release_tag}"
+
+          if gh release view "$release_tag" >/dev/null 2>&1; then
+            gh release upload "$release_tag" \
+              "release/${zip_name}" \
+              "release/orbital-surveyor/index.js" \
+              "release/orbital-surveyor/manifest.json" \
+              "release/orbital-surveyor/proxy.js" \
+              "release/orbital-surveyor/proxy.ps1" \
+              "release/orbital-surveyor/.env.example" \
+              --clobber
+          else
+            gh release create "$release_tag" \
+              "release/${zip_name}" \
+              "release/orbital-surveyor/index.js" \
+              "release/orbital-surveyor/manifest.json" \
+              "release/orbital-surveyor/proxy.js" \
+              "release/orbital-surveyor/proxy.ps1" \
+              "release/orbital-surveyor/.env.example" \
+              --title "$TITLE" \
+              --notes "Download the zip, copy the files into your Subway Builder mods folder, create .env from .env.example, and run node proxy.js before enabling imagery."
+          fi

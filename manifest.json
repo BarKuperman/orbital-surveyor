@@ -1,0 +1,10 @@
+{
+  "id": "com.author.modname",
+  "name": "My Mod",
+  "description": "Description of your mod",
+  "version": "1.0.0",
+  "author": {
+    "name": "Your Name"
+  },
+  "main": "index.js"
+}

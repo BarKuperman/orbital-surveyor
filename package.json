@@ -1,7 +1,7 @@
 {
-  "name": "my-subway-mod",
+  "name": "orbital-surveyor",
   "version": "1.0.0",
-  "description": "A mod for Subway Builder",
+  "description": "Satellite and terrain overlays for Subway Builder via a local tile proxy",
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
@@ -15,7 +15,7 @@
     "subway-builder",
     "mod"
   ],
-  "author": "Your Name",
+  "author": "barku",
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^25.0.9",

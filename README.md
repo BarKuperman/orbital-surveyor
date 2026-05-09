@@ -69,6 +69,7 @@ node --check proxy.js
 Built-in provider IDs:
 
 - `maptiler`: Default satellite provider through `satellite-v4`, and `terrain-rgb-v2` DEM tiles for actual MapLibre 3D terrain.
+- `mapterhorn`: Optional open terrain provider using Terrarium-encoded WebP DEM tiles from `https://tiles.mapterhorn.com/{z}/{x}/{y}.webp`.
 - `google`: Optional Google Map Tiles API satellite tiles.
 - `custom`: Optional XYZ templates from `CUSTOM_SATELLITE_URL` and `CUSTOM_TERRAIN_URL`.
 
@@ -79,3 +80,5 @@ https://api.maptiler.com/tiles/terrain-rgb-v2/{z}/{x}/{y}.webp?key=...
 ```
 
 Terrain mode enables MapLibre `raster-dem` terrain. Use the in-game terrain slider to control terrain exaggeration.
+
+Mapterhorn terrain uses 512px Terrarium-encoded WebP tiles. It does not need an API key.

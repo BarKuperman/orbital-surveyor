@@ -39,6 +39,12 @@ export const PROVIDERS: ProviderOption[] = [
     attribution: '© MapTiler © OpenStreetMap contributors',
   },
   {
+    id: 'mapterhorn',
+    label: 'Mapterhorn',
+    layers: ['terrain'],
+    attribution: 'Terrain © Mapterhorn contributors',
+  },
+  {
     id: 'custom',
     label: 'Custom Proxy',
     layers: ['satellite', 'terrain'],

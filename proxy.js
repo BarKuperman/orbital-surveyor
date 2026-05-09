@@ -24,6 +24,10 @@ const providers = {
     layers: ['satellite', 'terrain'],
     configured: () => Boolean(MAPTILER_API_KEY),
   },
+  mapterhorn: {
+    layers: ['terrain'],
+    configured: () => true,
+  },
   custom: {
     layers: ['satellite', 'terrain'],
     configured: () => Boolean(process.env.CUSTOM_SATELLITE_URL || process.env.CUSTOM_TERRAIN_URL),
@@ -100,6 +104,10 @@ async function resolveTileUrl(provider, layer, z, x, y) {
   if (provider === 'maptiler') {
     const target = resolveMapTilerTarget(layer);
     return `https://api.maptiler.com/tiles/${encodeURIComponent(target.id)}/${z}/${x}/${y}.${target.format}?key=${encodeURIComponent(MAPTILER_API_KEY)}`;
+  }
+
+  if (provider === 'mapterhorn') {
+    return `${process.env.MAPTERHORN_TILE_URL || 'https://tiles.mapterhorn.com'}/${z}/${x}/${y}.webp`;
   }
 
   const template = layer === 'satellite'

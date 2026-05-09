@@ -49,6 +49,13 @@ type TerrainDefinition = {
   enabled: boolean;
 };
 
+type TerrainSourceProfile = {
+  encoding: 'mapbox' | 'terrarium';
+  tileSize: number;
+  maxzoom: number;
+  attribution: string;
+};
+
 export class RasterLayerManager {
   private map: MapLike | null = null;
   private settings: SurveyorSettings | null = null;
@@ -174,7 +181,8 @@ export class RasterLayerManager {
   private ensureTerrain(definition: TerrainDefinition): void {
     if (!this.map || !this.settings) return;
 
-    const sourceKey = `${this.settings.proxyBaseUrl}|${definition.providerId}|terrain-rgb-v2`;
+    const sourceProfile = this.resolveTerrainSourceProfile(definition.providerId);
+    const sourceKey = `${this.settings.proxyBaseUrl}|${definition.providerId}|${sourceProfile.encoding}|${sourceProfile.tileSize}`;
     if (this.lastSourceKeys.get(definition.sourceId) !== sourceKey) {
       this.disableTerrain();
       this.removeSource(definition.sourceId);
@@ -190,10 +198,10 @@ export class RasterLayerManager {
       this.map.addSource(definition.sourceId, {
         type: 'raster-dem',
         tiles: [this.buildTileUrl(definition.providerId, 'terrain')],
-        tileSize: 256,
-        maxzoom: 14,
-        encoding: 'mapbox',
-        attribution: 'Terrain © MapTiler © OpenStreetMap contributors',
+        tileSize: sourceProfile.tileSize,
+        maxzoom: sourceProfile.maxzoom,
+        encoding: sourceProfile.encoding,
+        attribution: sourceProfile.attribution,
       });
     }
 
@@ -252,5 +260,23 @@ export class RasterLayerManager {
     if (this.map.getSource(sourceId)) {
       this.map.removeSource(sourceId);
     }
+  }
+
+  private resolveTerrainSourceProfile(providerId: string): TerrainSourceProfile {
+    if (providerId === 'mapterhorn') {
+      return {
+        encoding: 'terrarium',
+        tileSize: 512,
+        maxzoom: 17,
+        attribution: 'Terrain © Mapterhorn contributors',
+      };
+    }
+
+    return {
+      encoding: 'mapbox',
+      tileSize: 256,
+      maxzoom: 14,
+      attribution: 'Terrain © MapTiler © OpenStreetMap contributors',
+    };
   }
 }

@@ -1,10 +1,14 @@
 {
-  "id": "com.orbital-surveyor.overlays",
+  "id": "com.barku.orbital-surveyor",
   "name": "Orbital Surveyor",
   "description": "Adds satellite and terrain raster overlays through a local tile proxy.",
   "version": "1.0.0",
   "author": {
-    "name": "barku"
+    "name": "BarKuperman",
+    "url": "https://github.com/BarKuperman/"
   },
-  "main": "index.js"
+  "main": "index.js",
+  "dependencies": {
+    "subway-builder": ">=1.2.0"
+  }
 }

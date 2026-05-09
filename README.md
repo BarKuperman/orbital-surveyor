@@ -26,12 +26,6 @@ Subway Builder mod that adds satellite imagery and real 3D terrain to the in-gam
    node proxy.js
    ```
 
-   On Windows, you can also double-click or run:
-
-   ```powershell
-   .\proxy.ps1
-   ```
-
 7. Leave the proxy window open while playing.
 8. Enable Orbital Surveyor in Subway Builder under Settings > Mods.
 9. Open the Orbital Surveyor panel in-game and choose Base, Satellite, Terrain, or Both.

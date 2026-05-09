@@ -52,21 +52,17 @@ jobs:
           else
             RELEASE_TAG="v${PACKAGE_VERSION}-manual.${GITHUB_RUN_NUMBER}"
           fi
-          PACKAGE_DIR="release/orbital-surveyor"
           ZIP_NAME="orbital-surveyor-${RELEASE_TAG}.zip"
 
           rm -rf release
-          mkdir -p "$PACKAGE_DIR"
+          mkdir -p release
 
-          cp dist/index.js "$PACKAGE_DIR/index.js"
-          cp dist/manifest.json "$PACKAGE_DIR/manifest.json"
-          cp proxy.js "$PACKAGE_DIR/proxy.js"
-          cp proxy.ps1 "$PACKAGE_DIR/proxy.ps1"
-          cp .env.example "$PACKAGE_DIR/.env.example"
-          cp README.md "$PACKAGE_DIR/README.md"
-
-          cd release
-          zip -r "$ZIP_NAME" orbital-surveyor
+          zip -j "release/$ZIP_NAME" \
+            dist/index.js \
+            dist/manifest.json \
+            proxy.js \
+            .env.example \
+            README.md
 
           {
             echo "zip_name=$ZIP_NAME"
@@ -85,20 +81,12 @@ jobs:
           if gh release view "$release_tag" >/dev/null 2>&1; then
             gh release upload "$release_tag" \
               "release/${zip_name}" \
-              "release/orbital-surveyor/index.js" \
-              "release/orbital-surveyor/manifest.json" \
-              "release/orbital-surveyor/proxy.js" \
-              "release/orbital-surveyor/proxy.ps1" \
-              "release/orbital-surveyor/.env.example" \
+              "dist/manifest.json" \
               --clobber
           else
             gh release create "$release_tag" \
               "release/${zip_name}" \
-              "release/orbital-surveyor/index.js" \
-              "release/orbital-surveyor/manifest.json" \
-              "release/orbital-surveyor/proxy.js" \
-              "release/orbital-surveyor/proxy.ps1" \
-              "release/orbital-surveyor/.env.example" \
+              "dist/manifest.json" \
               --title "$TITLE" \
               --notes "Download the zip, copy the files into your Subway Builder mods folder, create .env from .env.example, and run node proxy.js before enabling imagery."
           fi

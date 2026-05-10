@@ -2,7 +2,7 @@
   "id": "com.barku.orbital-surveyor",
   "name": "Orbital Surveyor",
   "description": "Adds satellite and terrain raster overlays through a local tile proxy.",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "author": {
     "name": "BarKuperman",
     "url": "https://github.com/BarKuperman/"

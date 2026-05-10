@@ -12,7 +12,7 @@ type MapLike = {
   setLayoutProperty: (layerId: string, name: string, value: unknown) => void;
   setPaintProperty: (layerId: string, name: string, value: unknown) => void;
   moveLayer: (layerId: string, beforeId?: string) => void;
-  getStyle: () => { layers?: Array<{ id: string }> };
+  getStyle: () => { layers?: Array<{ id: string; source?: string }>; sources?: Record<string, unknown> };
   isStyleLoaded?: () => boolean | void;
   setStyle?: (style: unknown, options?: unknown) => unknown;
   setTerrain?: (terrain: { source: string; exaggeration?: number } | null) => void;
@@ -22,6 +22,7 @@ type MapLike = {
 const SATELLITE_SOURCE_ID = 'orbital-surveyor-satellite-source';
 const SATELLITE_LAYER_ID = 'orbital-surveyor-satellite-layer';
 const TERRAIN_DEM_SOURCE_ID = 'orbital-surveyor-terrain-dem-source';
+const GAME_BASE_SOURCE_IDS = ['general-tiles'];
 
 const ORDER_ANCHORS = [
   'track-elevations',
@@ -336,9 +337,57 @@ export class RasterLayerManager {
     map.setStyle = (style: unknown, options?: unknown): unknown => {
       this.disableTerrain();
       this.clearScheduledEnsure();
-      const result = originalSetStyle(style, options);
+      const result = originalSetStyle(this.restoreMissingGameSources(style), options);
       this.scheduleEnsureLayers();
       return result;
+    };
+  }
+
+  private restoreMissingGameSources(style: unknown): unknown {
+    if (!style || typeof style !== 'object' || Array.isArray(style) || !this.map) {
+      return style;
+    }
+
+    const nextStyle = style as {
+      sources?: Record<string, unknown>;
+      layers?: Array<{ source?: string }>;
+    };
+    if (!nextStyle.layers?.length) return style;
+
+    const missingSourceIds = GAME_BASE_SOURCE_IDS.filter((sourceId) => (
+      nextStyle.layers?.some((layer) => layer.source === sourceId) &&
+      !nextStyle.sources?.[sourceId]
+    ));
+    if (!missingSourceIds.length) return style;
+
+    let currentSources: Record<string, unknown> | undefined;
+    try {
+      currentSources = this.map.getStyle().sources;
+    } catch (error) {
+      this.warnOnce('restoreGameSources:getStyle', '[OrbitalSurveyor] Failed to inspect current game sources', error);
+      return style;
+    }
+
+    const restoredSources = Object.fromEntries(
+      missingSourceIds
+        .map((sourceId) => [sourceId, currentSources?.[sourceId]] as const)
+        .filter(([, source]) => Boolean(source)),
+    );
+    if (!Object.keys(restoredSources).length) {
+      this.warnOnce(
+        'restoreGameSources:missing',
+        `[OrbitalSurveyor] Game style is missing required source(s): ${missingSourceIds.join(', ')}`,
+        new Error('No matching source found in current style'),
+      );
+      return style;
+    }
+
+    return {
+      ...nextStyle,
+      sources: {
+        ...nextStyle.sources,
+        ...restoredSources,
+      },
     };
   }
 

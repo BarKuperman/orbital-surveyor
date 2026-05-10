@@ -103,7 +103,7 @@ async function resolveTileUrl(provider, layer, z, x, y) {
 
   if (provider === 'maptiler') {
     const target = resolveMapTilerTarget(layer);
-    return `https://api.maptiler.com/tiles/${encodeURIComponent(target.id)}/${z}/${x}/${y}.${target.format}?key=${encodeURIComponent(MAPTILER_API_KEY)}`;
+    return `https://api.maptiler.com/${target.kind}/${encodeURIComponent(target.id)}/${z}/${x}/${y}.${target.format}?key=${encodeURIComponent(MAPTILER_API_KEY)}`;
   }
 
   if (provider === 'mapterhorn') {
@@ -124,14 +124,17 @@ async function resolveTileUrl(provider, layer, z, x, y) {
 
 function resolveMapTilerTarget(layer) {
   if (layer === 'satellite') {
-    const id = process.env.MAPTILER_SATELLITE_TILESET_ID || process.env.MAPTILER_SATELLITE_MAP_ID || 'satellite-v4';
-    const format = process.env.MAPTILER_SATELLITE_FORMAT || 'png';
-    return { id, format };
+    const mapId = process.env.MAPTILER_SATELLITE_MAP_ID || 'satellite-v4';
+    const tilesetId = process.env.MAPTILER_SATELLITE_TILESET_ID;
+    const format = process.env.MAPTILER_SATELLITE_FORMAT || 'jpg';
+    return tilesetId
+      ? { kind: 'tiles', id: tilesetId, format }
+      : { kind: 'maps', id: mapId, format };
   }
 
   const id = process.env.MAPTILER_TERRAIN_TILESET_ID || process.env.MAPTILER_TERRAIN_MAP_ID || 'terrain-rgb-v2';
   const format = process.env.MAPTILER_TERRAIN_FORMAT || 'webp';
-  return { id: id === 'terrain' ? 'terrain-rgb-v2' : id, format };
+  return { kind: 'tiles', id: id === 'terrain' ? 'terrain-rgb-v2' : id, format };
 }
 
 async function getGoogleSession(layer) {

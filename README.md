@@ -30,11 +30,11 @@ Subway Builder mod that adds satellite imagery and real 3D terrain to the in-gam
 8. Enable Orbital Surveyor in Subway Builder under Settings > Mods.
 9. Open the Orbital Surveyor panel in-game and choose Base, Satellite, Terrain, or Both.
 
-## Terrain Warning
+## Terrain Reloads
 
-Terrain mode uses MapLibre 3D terrain. While Terrain or Both mode is active, do not switch the game between 2D and 3D view and do not change the built-in in-game map layers. Subway Builder can crash if those game map controls rebuild the map while terrain is enabled.
+Terrain mode is heavier than the normal map. When Subway Builder reloads its game layers, Orbital Surveyor's terrain has to reload too.
 
-Switch Orbital Surveyor back to Base or Satellite before changing the game 2D/3D view or built-in map layer settings.
+Because terrain takes longer to load, it may briefly disappear or lag behind after changing screens, switching 2D/3D view, or changing the game's map layers. It should restore automatically after a moment.
 
 ## Proxy Details
 
@@ -68,7 +68,7 @@ node --check proxy.js
 
 Built-in provider IDs:
 
-- `maptiler`: Default satellite provider through `satellite-v4`, and `terrain-rgb-v2` DEM tiles for actual MapLibre 3D terrain.
+- `maptiler`: Default satellite provider through the `satellite-v4` map, and `terrain-rgb-v2` DEM tiles for actual MapLibre 3D terrain.
 - `mapterhorn`: Optional open terrain provider using Terrarium-encoded WebP DEM tiles from `https://tiles.mapterhorn.com/{z}/{x}/{y}.webp`.
 - `google`: Optional Google Map Tiles API satellite tiles.
 - `custom`: Optional XYZ templates from `CUSTOM_SATELLITE_URL` and `CUSTOM_TERRAIN_URL`.

@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  CITY_LAYER_GROUPS,
+  DEFAULT_CITY_LAYERS,
   DEFAULT_PROXY_BASE_URL,
   PROVIDERS,
   normalizeProxyBaseUrl,
+  type CityLayerId,
   type OverlayMode,
   type ProviderLayer,
   type SurveyorSettings,
@@ -44,8 +47,28 @@ export function SurveyorPanel({ store, onSettingsChange }: Props) {
     void store.updateSettings(patch).then(onSettingsChange);
   };
 
+  const updateCityLayer = (layerId: CityLayerId, visible: boolean) => {
+    updateSettings({
+      cityLayers: {
+        ...snapshot.settings.cityLayers,
+        [layerId]: visible,
+      },
+    });
+  };
+
+  const resetCityLayers = () => {
+    updateSettings({ cityLayers: { ...DEFAULT_CITY_LAYERS } });
+  };
+
+  const hasVisibleCityLayer = CITY_LAYER_GROUPS.some((group) => (
+    group.layers.some((layerId) => snapshot.settings.cityLayers[layerId])
+  ));
+
   return (
-    <div className="flex w-full flex-col gap-3 p-3 text-sm">
+    <div
+      className="flex w-full min-h-0 flex-col gap-3 overflow-y-auto p-3 pr-2 text-sm"
+      style={{ maxHeight: 'calc(100vh - 160px)' }}
+    >
       <div className="flex flex-col gap-1">
         <Label>View mode</Label>
         <div className="grid grid-cols-4 gap-1">
@@ -88,6 +111,33 @@ export function SurveyorPanel({ store, onSettingsChange }: Props) {
         onChange={(value) => updateSettings({ terrainExaggeration: value * 4 })}
       />
 
+      <div className="flex flex-col gap-2 rounded border border-border p-2">
+        <div className="flex items-center justify-between">
+          <Label>Map layers</Label>
+          {hasVisibleCityLayer && (
+            <Button variant="secondary" onClick={resetCityLayers}>
+              Reset
+            </Button>
+          )}
+        </div>
+        <div className="flex flex-col gap-3">
+          {CITY_LAYER_GROUPS.map((group) => (
+            <div key={group.key} className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-muted-foreground">{group.label}</span>
+              {group.layers.map((layerId) => (
+                <div key={layerId} className="flex items-center justify-between gap-3">
+                  <span className="font-mono text-xs">{layerId}</span>
+                  <LayerToggle
+                    checked={snapshot.settings.cityLayers[layerId]}
+                    onChange={(visible) => updateCityLayer(layerId, visible)}
+                  />
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+
       <div className="flex flex-col gap-1">
         <Label>Proxy URL</Label>
         <div className="flex gap-2">
@@ -113,6 +163,34 @@ export function SurveyorPanel({ store, onSettingsChange }: Props) {
         Refresh status
       </Button>
     </div>
+  );
+}
+
+function LayerToggle({
+  checked,
+  onChange,
+}: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      className={[
+        'relative h-6 w-11 shrink-0 rounded-full border transition-colors',
+        checked ? 'border-green-500 bg-green-500' : 'border-border bg-muted',
+      ].join(' ')}
+      onClick={() => onChange(!checked)}
+    >
+      <span
+        className={[
+          'absolute top-0.5 h-5 w-5 rounded-full bg-background shadow transition-transform',
+          checked ? 'translate-x-5' : 'translate-x-0.5',
+        ].join(' ')}
+      />
+    </button>
   );
 }
 

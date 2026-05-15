@@ -30,6 +30,24 @@ Subway Builder mod that adds satellite imagery and real 3D terrain to the in-gam
 8. Enable Orbital Surveyor in Subway Builder under Settings > Mods.
 9. Open the Orbital Surveyor panel in-game and choose Base, Satellite, Terrain, or Both.
 
+## Map Layer Filtering
+
+The Orbital Surveyor panel is scrollable and includes a Map layers section for controlling built-in game layers while an overlay mode is active.
+
+Layer switches are off by default so satellite and terrain overlays are easier to see. Turn a switch on to show that specific game layer above the overlay. Base mode restores the game's own layer visibility, and the mod only restores layers it hid itself.
+
+Controlled layer IDs:
+
+- Buildings: `buildings-3d`
+- Water: `water`, `ocean-depth-labels`
+- Parks: `parks-large`, `parks-small`
+- General tiles: `general-tiles`
+- Roads: `road-labels`, `intersections-layer`, `road-lines`
+- Airports: `runways-taxiways`
+- Area labels: `neighborhood-labels`, `suburb-labels`, `city-labels`
+
+Use Reset in the Map layers section to return all controlled layers to the hidden-by-default overlay view.
+
 ## Terrain Reloads
 
 Terrain mode is heavier than the normal map. When Subway Builder reloads its game layers, Orbital Surveyor's terrain has to reload too.

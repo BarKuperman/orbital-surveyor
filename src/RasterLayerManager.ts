@@ -1,4 +1,4 @@
-import type { SurveyorSettings } from './config';
+import { CITY_LAYER_GROUPS, MOD_ID, type SurveyorSettings } from './config';
 
 type MapLike = {
   on: (type: string, listener: () => void) => void;
@@ -12,16 +12,19 @@ type MapLike = {
   setLayoutProperty: (layerId: string, name: string, value: unknown) => void;
   setPaintProperty: (layerId: string, name: string, value: unknown) => void;
   moveLayer: (layerId: string, beforeId?: string) => void;
-  getStyle: () => { layers?: Array<{ id: string; source?: string }>; sources?: Record<string, unknown> };
+  getStyle: () => {
+    layers?: Array<{ id: string; source?: string; layout?: { visibility?: unknown } }>;
+    sources?: Record<string, unknown>;
+  };
   isStyleLoaded?: () => boolean | void;
   setStyle?: (style: unknown, options?: unknown) => unknown;
   setTerrain?: (terrain: { source: string; exaggeration?: number } | null) => void;
   getTerrain?: () => { source: string; exaggeration?: number } | null;
 };
 
-const SATELLITE_SOURCE_ID = 'orbital-surveyor-satellite-source';
-const SATELLITE_LAYER_ID = 'orbital-surveyor-satellite-layer';
-const TERRAIN_DEM_SOURCE_ID = 'orbital-surveyor-terrain-dem-source';
+const SATELLITE_SOURCE_ID = `${MOD_ID}:satellite-source`;
+const SATELLITE_LAYER_ID = `${MOD_ID}:satellite-layer`;
+const TERRAIN_DEM_SOURCE_ID = `${MOD_ID}:terrain-dem-source`;
 const GAME_BASE_SOURCE_IDS = ['general-tiles'];
 
 const ORDER_ANCHORS = [
@@ -71,6 +74,7 @@ export class RasterLayerManager {
   private patchedMap: MapLike | null = null;
   private originalSetStyle: MapLike['setStyle'] | null = null;
   private warnedKeys = new Set<string>();
+  private hiddenGameLayerVisibilities = new Map<string, 'visible' | 'none'>();
 
   setMap(map: MapLike): void {
     if (this.map === map) return;
@@ -88,6 +92,7 @@ export class RasterLayerManager {
 
   reset(): void {
     this.clearScheduledEnsure();
+    this.restoreCityLayerVisibility();
     this.disableTerrain();
     this.removeSource(TERRAIN_DEM_SOURCE_ID);
     this.removeLayer(SATELLITE_LAYER_ID, SATELLITE_SOURCE_ID);
@@ -156,6 +161,7 @@ export class RasterLayerManager {
       enabled: terrainEnabled,
     });
 
+    this.applyCityLayerVisibility();
     this.reorderLayers();
   }
 
@@ -270,6 +276,29 @@ export class RasterLayerManager {
     [SATELLITE_LAYER_ID].forEach((layerId) => {
       if (!this.hasLayer(layerId)) return;
       this.moveLayer(layerId, beforeId);
+    });
+  }
+
+  private applyCityLayerVisibility(): void {
+    if (!this.map || !this.settings) return;
+    const overlayActive = this.settings.mode !== 'base';
+
+    CITY_LAYER_GROUPS.forEach((group) => {
+      group.layers.forEach((layerId) => {
+        const hidden = overlayActive && this.settings?.cityLayers[layerId] === false;
+        if (hidden) {
+          this.hideGameLayer(layerId);
+        } else {
+          this.restoreGameLayerVisibility(layerId);
+        }
+      });
+    });
+  }
+
+  private restoreCityLayerVisibility(): void {
+    if (!this.map) return;
+    [...this.hiddenGameLayerVisibilities.keys()].forEach((layerId) => {
+      this.restoreGameLayerVisibility(layerId);
     });
   }
 
@@ -488,6 +517,45 @@ export class RasterLayerManager {
       this.map.setLayoutProperty(layerId, name, value);
     } catch (error) {
       this.warnOnce(`setLayoutProperty:${layerId}:${name}`, `[OrbitalSurveyor] Failed to set layout property ${name} on ${layerId}`, error);
+    }
+  }
+
+  private hideGameLayer(layerId: string): void {
+    if (!this.map || !this.hasLayer(layerId)) return;
+    const visibility = this.getLayerVisibility(layerId);
+    if (visibility === null || visibility === 'none') return;
+
+    if (!this.hiddenGameLayerVisibilities.has(layerId)) {
+      this.hiddenGameLayerVisibilities.set(layerId, visibility);
+    }
+    this.setGameLayerVisibility(layerId, 'none');
+  }
+
+  private restoreGameLayerVisibility(layerId: string): void {
+    if (!this.map || !this.hiddenGameLayerVisibilities.has(layerId)) return;
+    const visibility = this.hiddenGameLayerVisibilities.get(layerId)!;
+    this.hiddenGameLayerVisibilities.delete(layerId);
+    this.setGameLayerVisibility(layerId, visibility);
+  }
+
+  private setGameLayerVisibility(layerId: string, visibility: 'visible' | 'none'): void {
+    if (!this.map || !this.hasLayer(layerId)) return;
+    if (this.getLayerVisibility(layerId) === visibility) return;
+    try {
+      this.map.setLayoutProperty(layerId, 'visibility', visibility);
+    } catch {
+      // Game styles vary by city; missing or transient layers can be ignored.
+    }
+  }
+
+  private getLayerVisibility(layerId: string): 'visible' | 'none' | null {
+    if (!this.map) return null;
+    try {
+      const layer = this.map.getStyle().layers?.find((candidate) => candidate.id === layerId);
+      if (!layer) return null;
+      return layer.layout?.visibility === 'none' ? 'none' : 'visible';
+    } catch {
+      return null;
     }
   }
 

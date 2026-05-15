@@ -5,14 +5,18 @@ import { SurveyorPanel } from './ui/SurveyorPanel';
 
 const api = window.SubwayBuilderAPI;
 const React = api?.utils.React;
+type ReadyMap = Parameters<RasterLayerManager['setMap']>[0];
 
 class OrbitalSurveyorMod {
   private initialized = false;
   private mapLayers: RasterLayerManager | null = null;
   private store: SurveyorStore | null = null;
 
-  async initialize(): Promise<void> {
-    if (this.initialized) return;
+  async initialize(map: ReadyMap): Promise<void> {
+    if (this.initialized) {
+      this.onMapReady(map);
+      return;
+    }
     this.initialized = true;
 
     if (!api) {
@@ -48,28 +52,24 @@ class OrbitalSurveyorMod {
       isActive: () => this.store?.getSnapshot().settings.mode !== 'base',
     });
 
-    api.hooks.onMapReady((map) => this.onMapReady(map));
-    api.hooks.onGameEnd(() => this.onGameEnd());
-
-    const currentMap = api.utils.getMap();
-    if (currentMap) {
-      this.onMapReady(currentMap);
-    }
-
+    this.onMapReady(map);
     this.applySettings(this.store.getSnapshot().settings);
     console.log(`${TAG} Initialized`);
   }
 
   private onMapReady(map: unknown): void {
-    const resolvedMap = map ?? api.utils.getMap();
-    if (!resolvedMap || !this.mapLayers || !this.store) return;
+    if (!map || !this.mapLayers || !this.store) return;
 
-    this.mapLayers.setMap(resolvedMap as Parameters<RasterLayerManager['setMap']>[0]);
+    this.mapLayers.setMap(map as ReadyMap);
     this.mapLayers.setSettings(this.store.getSnapshot().settings);
   }
 
-  private onGameEnd(): void {
-    this.mapLayers?.reset();
+  onGameEnd(): void {
+    this.mapLayers?.destroy();
+    this.store?.destroy();
+    this.mapLayers = null;
+    this.store = null;
+    this.initialized = false;
   }
 
   private applySettings(settings: SurveyorSettings): void {
@@ -91,7 +91,15 @@ class OrbitalSurveyorMod {
   }
 }
 
-void new OrbitalSurveyorMod().initialize().catch((error) => {
-  console.error(`${TAG} Failed to initialize`, error);
-  api?.ui.showNotification(`${MOD_ID} failed to load. Check console for details.`, 'error');
-});
+if (!api) {
+  console.error(`${TAG} SubwayBuilderAPI not found`);
+} else {
+  const mod = new OrbitalSurveyorMod();
+  api.hooks.onMapReady((map) => {
+    void mod.initialize(map).catch((error) => {
+      console.error(`${TAG} Failed to initialize`, error);
+      api.ui.showNotification(`${MOD_ID} failed to load. Check console for details.`, 'error');
+    });
+  });
+  api.hooks.onGameEnd(() => mod.onGameEnd());
+}

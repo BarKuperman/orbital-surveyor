@@ -141,16 +141,13 @@ export class RasterLayerManager {
       return;
     }
 
-    const satelliteVisible = this.settings.mode === 'satellite' || this.settings.mode === 'both';
-    const terrainEnabled = this.settings.mode === 'terrain' || this.settings.mode === 'both';
-
     this.ensureRasterLayer({
       sourceId: SATELLITE_SOURCE_ID,
       layerId: SATELLITE_LAYER_ID,
       providerId: this.settings.satelliteProvider,
       layerName: 'satellite',
       opacity: this.settings.satelliteOpacity,
-      visible: satelliteVisible,
+      visible: this.settings.satelliteEnabled,
       attribution: 'Imagery © Google',
     });
 
@@ -158,7 +155,7 @@ export class RasterLayerManager {
       sourceId: TERRAIN_DEM_SOURCE_ID,
       providerId: this.settings.terrainProvider,
       exaggeration: this.settings.terrainExaggeration,
-      enabled: terrainEnabled,
+      enabled: this.settings.terrainEnabled,
     });
 
     this.applyCityLayerVisibility();
@@ -281,7 +278,7 @@ export class RasterLayerManager {
 
   private applyCityLayerVisibility(): void {
     if (!this.map || !this.settings) return;
-    const overlayActive = this.settings.mode !== 'base';
+    const overlayActive = this.settings.satelliteEnabled || this.settings.terrainEnabled;
 
     CITY_LAYER_GROUPS.forEach((group) => {
       group.layers.forEach((layerId) => {

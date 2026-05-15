@@ -2,6 +2,7 @@ import { MOD_ID, MOD_NAME, MOD_VERSION, TAG, type SurveyorSettings } from './con
 import { RasterLayerManager } from './RasterLayerManager';
 import { SurveyorStore } from './state';
 import { SurveyorPanel } from './ui/SurveyorPanel';
+import { injectSurveyorStyles } from './ui/styles';
 
 const api = window.SubwayBuilderAPI;
 const React = api?.utils.React;
@@ -25,6 +26,7 @@ class OrbitalSurveyorMod {
     }
 
     console.log(`${TAG} ${MOD_NAME} v${MOD_VERSION} | API v${api.version}`);
+    injectSurveyorStyles();
 
     this.mapLayers = new RasterLayerManager();
     this.store = new SurveyorStore(api);
@@ -40,16 +42,6 @@ class OrbitalSurveyorMod {
         store: this.store!,
         onSettingsChange: (settings: SurveyorSettings) => this.applySettings(settings),
       }),
-    });
-
-    api.ui.addToolbarButton({
-      id: 'orbital-surveyor-cycle',
-      icon: 'Layers',
-      tooltip: 'Cycle map imagery',
-      onClick: () => {
-        void this.cycleMode();
-      },
-      isActive: () => this.store?.getSnapshot().settings.mode !== 'base',
     });
 
     this.onMapReady(map);
@@ -76,19 +68,6 @@ class OrbitalSurveyorMod {
     this.mapLayers?.setSettings(settings);
   }
 
-  private async cycleMode(): Promise<void> {
-    if (!this.store) return;
-    const current = this.store.getSnapshot().settings.mode;
-    const next = current === 'base'
-      ? 'satellite'
-      : current === 'satellite'
-        ? 'terrain'
-        : current === 'terrain'
-          ? 'both'
-          : 'base';
-    const settings = await this.store.updateSettings({ mode: next });
-    this.applySettings(settings);
-  }
 }
 
 if (!api) {

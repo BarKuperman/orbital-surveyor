@@ -5,7 +5,6 @@ import {
   DEFAULT_PROXY_BASE_URL,
   PROVIDERS,
   normalizeProxyBaseUrl,
-  type CityLayerId,
   type ProviderLayer,
   type SurveyorSettings,
 } from '../config';
@@ -20,6 +19,15 @@ const ChevronDown = icons.ChevronDown;
 const SatelliteIcon = icons.Satellite;
 const TerrainIcon = icons.Mountain;
 const LayersIcon = icons.Layers;
+const layerIcons = {
+  buildings: icons.Building,
+  water: icons.Droplets,
+  parks: icons.TreePine,
+  general: icons.Map,
+  roads: icons.Route,
+  airports: icons.Plane,
+  areaLabels: icons.Type,
+} as const;
 
 type Props = {
   store: SurveyorStore;
@@ -47,12 +55,16 @@ export function SurveyorPanel({ store, onSettingsChange }: Props) {
     void store.updateSettings(patch).then(onSettingsChange);
   };
 
-  const updateCityLayer = (layerId: CityLayerId, visible: boolean) => {
+  const updateCityLayerGroup = (
+    group: (typeof CITY_LAYER_GROUPS)[number],
+    visible: boolean,
+  ) => {
+    const cityLayers = { ...snapshot.settings.cityLayers };
+    for (const layerId of group.layers) {
+      cityLayers[layerId] = visible;
+    }
     updateSettings({
-      cityLayers: {
-        ...snapshot.settings.cityLayers,
-        [layerId]: visible,
-      },
+      cityLayers,
     });
   };
 
@@ -60,8 +72,21 @@ export function SurveyorPanel({ store, onSettingsChange }: Props) {
     updateSettings({ cityLayers: { ...DEFAULT_CITY_LAYERS } });
   };
 
+  const selectAllCityLayers = () => {
+    const cityLayers = { ...snapshot.settings.cityLayers };
+    for (const group of CITY_LAYER_GROUPS) {
+      for (const layerId of group.layers) {
+        cityLayers[layerId] = true;
+      }
+    }
+    updateSettings({ cityLayers });
+  };
+
   const hasVisibleCityLayer = CITY_LAYER_GROUPS.some((group) => (
     group.layers.some((layerId) => snapshot.settings.cityLayers[layerId])
+  ));
+  const allCityLayersVisible = CITY_LAYER_GROUPS.every((group) => (
+    group.layers.every((layerId) => snapshot.settings.cityLayers[layerId])
   ));
 
   return (
@@ -136,30 +161,37 @@ export function SurveyorPanel({ store, onSettingsChange }: Props) {
         icon={LayersIcon}
         open={layersOpen}
         onOpenChange={setLayersOpen}
-        action={hasVisibleCityLayer ? (
-          <Button variant="secondary" onClick={resetCityLayers}>
-            Reset
-          </Button>
-        ) : null}
+        action={(
+          <div className="flex gap-1.5">
+            <Button
+              variant="secondary"
+              className="os-small-action"
+              disabled={allCityLayersVisible}
+              onClick={selectAllCityLayers}
+            >
+              Select all
+            </Button>
+            {hasVisibleCityLayer ? (
+              <Button variant="secondary" className="os-small-action" onClick={resetCityLayers}>
+                Reset
+              </Button>
+            ) : null}
+          </div>
+        )}
       >
-        <div className="flex flex-col gap-3">
-          {CITY_LAYER_GROUPS.map((group) => (
-            <div key={group.key} className="flex flex-col gap-2">
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                {group.label}
-              </span>
-              <div className="os-layer-grid">
-                {group.layers.map((layerId) => (
-                  <LayerPill
-                    key={layerId}
-                    label={layerId}
-                    enabled={snapshot.settings.cityLayers[layerId]}
-                    onClick={() => updateCityLayer(layerId, !snapshot.settings.cityLayers[layerId])}
-                  />
-                ))}
-              </div>
-            </div>
-          ))}
+        <div className="os-layer-grid">
+          {CITY_LAYER_GROUPS.map((group) => {
+            const enabled = group.layers.some((layerId) => snapshot.settings.cityLayers[layerId]);
+            return (
+              <LayerTile
+                key={group.key}
+                label={group.label}
+                icon={layerIcons[group.key] ?? icons.Circle}
+                enabled={enabled}
+                onClick={() => updateCityLayerGroup(group, !enabled)}
+              />
+            );
+          })}
         </div>
       </PanelSection>
 
@@ -301,12 +333,14 @@ function ToggleButton({
   );
 }
 
-function LayerPill({
+function LayerTile({
   label,
+  icon: Icon,
   enabled,
   onClick,
 }: {
   label: string;
+  icon?: Component;
   enabled: boolean;
   onClick: () => void;
   key?: string;
@@ -314,25 +348,29 @@ function LayerPill({
   return (
     <button
       type="button"
-      className="os-layer-pill"
+      className="os-layer-tile"
       data-enabled={enabled ? 'true' : 'false'}
       style={{
-        minHeight: 34,
+        minHeight: 48,
         borderRadius: 8,
-        border: enabled ? '1px solid #ffffff' : '1px solid rgba(255,255,255,0.22)',
-        background: enabled ? '#ffffff' : 'rgba(255,255,255,0.08)',
-        color: enabled ? '#050505' : 'rgba(255,255,255,0.78)',
-        padding: '7px 9px',
-        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-        fontSize: 11,
-        lineHeight: 1.15,
-        textAlign: 'left',
-        overflowWrap: 'anywhere',
+        border: enabled ? '1px solid hsl(var(--primary))' : '1px solid hsl(var(--border))',
+        background: enabled ? 'hsl(var(--primary) / 0.18)' : 'hsl(var(--muted) / 0.32)',
+        color: enabled ? 'hsl(var(--foreground))' : 'hsl(var(--muted-foreground))',
+        padding: '7px 6px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 6,
+        fontSize: 12,
+        fontWeight: 700,
+        lineHeight: 1.1,
+        textAlign: 'center',
         cursor: 'pointer',
       }}
       onClick={onClick}
     >
-      {label}
+      {Icon ? <Icon size={16} className="shrink-0" /> : null}
+      <span>{label}</span>
     </button>
   );
 }

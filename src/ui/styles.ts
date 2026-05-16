@@ -40,34 +40,48 @@ export function injectSurveyorStyles(): void {
 
 	    .os-layer-grid {
 	      display: grid;
-	      grid-template-columns: repeat(2, minmax(0, 1fr));
-	      gap: 8px;
+	      grid-template-columns: repeat(3, minmax(0, 1fr));
+	      gap: 7px;
 	    }
 
-	    .os-layer-pill {
-	      min-height: 34px;
+	    .os-layer-tile {
+	      min-height: 48px;
 	      border-radius: 8px;
 	      border: 1px solid hsl(var(--border));
-	      background: hsl(var(--muted) / 0.28);
+	      background: hsl(var(--muted) / 0.32);
 	      color: hsl(var(--muted-foreground));
-	      padding: 6px 8px;
-	      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-	      font-size: 11px;
-	      line-height: 1.15;
-	      text-align: left;
-	      overflow-wrap: anywhere;
+	      padding: 7px 6px;
+	      display: flex;
+	      align-items: center;
+	      justify-content: center;
+	      gap: 6px;
+	      font-size: 12px;
+	      font-weight: 700;
+	      line-height: 1.1;
+	      text-align: center;
 	      transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
 	    }
 
-	    .os-layer-pill:hover {
-	      border-color: hsl(var(--foreground) / 0.45);
+	    .os-layer-tile:hover {
+	      border-color: hsl(var(--primary) / 0.72);
 	      color: hsl(var(--foreground));
+	      background: hsl(var(--muted) / 0.48);
 	    }
 
-	    .os-layer-pill[data-enabled="true"] {
-	      border-color: hsl(var(--foreground));
-	      background: hsl(var(--foreground));
-	      color: hsl(var(--background));
+	    .os-layer-tile[data-enabled="true"] {
+	      border-color: hsl(var(--primary));
+	      background: hsl(var(--primary) / 0.18);
+	      color: hsl(var(--foreground));
+	      box-shadow: inset 0 0 0 1px hsl(var(--primary) / 0.18);
+	    }
+
+	    .os-small-action {
+	      min-height: 28px;
+	      height: 28px;
+	      padding: 0 8px;
+	      border-radius: 6px;
+	      font-size: 11px;
+	      line-height: 1;
 	    }
 
     .os-toggle {

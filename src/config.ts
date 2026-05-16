@@ -78,7 +78,7 @@ export const DEFAULT_SETTINGS: SurveyorSettings = {
   terrainEnabled: false,
   satelliteProvider: 'maptiler',
   terrainProvider: 'maptiler',
-  satelliteOpacity: 0.85,
+  satelliteOpacity: 1,
   terrainExaggeration: 1.4,
   cityLayers: { ...DEFAULT_CITY_LAYERS },
 };
@@ -100,7 +100,7 @@ export function mergeSettings(value: unknown): SurveyorSettings {
     terrainEnabled: normalizeBoolean(input.terrainEnabled, DEFAULT_SETTINGS.terrainEnabled),
     satelliteProvider: normalizeSatelliteProvider(input.satelliteProvider, input),
     terrainProvider: input.terrainProvider || DEFAULT_SETTINGS.terrainProvider,
-    satelliteOpacity: normalizeOpacity(input.satelliteOpacity, DEFAULT_SETTINGS.satelliteOpacity),
+    satelliteOpacity: 1,
     terrainExaggeration: normalizeExaggeration(
       input.terrainExaggeration ?? input.terrainOpacity,
       DEFAULT_SETTINGS.terrainExaggeration,
@@ -126,11 +126,6 @@ function normalizeSatelliteProvider(
 
 function normalizeBoolean(value: unknown, fallback: boolean): boolean {
   return typeof value === 'boolean' ? value : fallback;
-}
-
-function normalizeOpacity(value: unknown, fallback: number): number {
-  if (typeof value !== 'number' || Number.isNaN(value)) return fallback;
-  return Math.min(1, Math.max(0, value));
 }
 
 function normalizeExaggeration(value: unknown, fallback: number): number {

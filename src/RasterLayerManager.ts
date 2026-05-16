@@ -26,8 +26,10 @@ const SATELLITE_SOURCE_ID = `${MOD_ID}:satellite-source`;
 const SATELLITE_LAYER_ID = `${MOD_ID}:satellite-layer`;
 const TERRAIN_DEM_SOURCE_ID = `${MOD_ID}:terrain-dem-source`;
 const GAME_BASE_SOURCE_IDS = ['general-tiles'];
+const GAME_CONTROLLED_LABEL_LAYERS = new Set(['ocean-depth-labels']);
+const CITY_LAYER_ANCHORS = CITY_LAYER_GROUPS.flatMap((group) => group.layers);
 
-const ORDER_ANCHORS = [
+const FALLBACK_ORDER_ANCHORS = [
   'track-elevations',
   'tracks',
   'blueprint-tracks',
@@ -74,7 +76,7 @@ export class RasterLayerManager {
   private patchedMap: MapLike | null = null;
   private originalSetStyle: MapLike['setStyle'] | null = null;
   private warnedKeys = new Set<string>();
-  private hiddenGameLayerVisibilities = new Map<string, 'visible' | 'none'>();
+  private filteredGameLayers = new Set<string>();
 
   setMap(map: MapLike): void {
     if (this.map === map) return;
@@ -110,7 +112,10 @@ export class RasterLayerManager {
     if (!this.map) return;
     this.styleHandler = () => this.onStyleData();
     this.styleLoadingHandler = () => this.onStyleLoading();
-    this.dataHandler = () => this.reorderLayers();
+    this.dataHandler = () => {
+      this.applyCityLayerVisibility();
+      this.reorderLayers();
+    };
     this.map.on('styledata', this.styleHandler);
     this.map.on('styledataloading', this.styleLoadingHandler);
     this.map.on('data', this.dataHandler);
@@ -146,7 +151,7 @@ export class RasterLayerManager {
       layerId: SATELLITE_LAYER_ID,
       providerId: this.settings.satelliteProvider,
       layerName: 'satellite',
-      opacity: this.settings.satelliteOpacity,
+      opacity: 1,
       visible: this.settings.satelliteEnabled,
       attribution: 'Imagery © Google',
     });
@@ -282,20 +287,26 @@ export class RasterLayerManager {
 
     CITY_LAYER_GROUPS.forEach((group) => {
       group.layers.forEach((layerId) => {
-        const hidden = overlayActive && this.settings?.cityLayers[layerId] === false;
-        if (hidden) {
-          this.hideGameLayer(layerId);
-        } else {
-          this.restoreGameLayerVisibility(layerId);
-        }
+        if (!overlayActive) return;
+        this.filteredGameLayers.add(layerId);
+        this.setGameLayerVisibility(
+          layerId,
+          this.settings?.cityLayers[layerId] === false ? 'none' : 'visible',
+        );
       });
     });
+
+    if (!overlayActive) {
+      this.restoreCityLayerVisibility();
+    }
   }
 
   private restoreCityLayerVisibility(): void {
     if (!this.map) return;
-    [...this.hiddenGameLayerVisibilities.keys()].forEach((layerId) => {
-      this.restoreGameLayerVisibility(layerId);
+    [...this.filteredGameLayers].forEach((layerId) => {
+      this.filteredGameLayers.delete(layerId);
+      if (GAME_CONTROLLED_LABEL_LAYERS.has(layerId)) return;
+      this.setGameLayerVisibility(layerId, 'visible');
     });
   }
 
@@ -303,7 +314,10 @@ export class RasterLayerManager {
     if (!this.map) return undefined;
     try {
       const layerIds = this.map.getStyle().layers?.map((layer) => layer.id) ?? [];
-      return ORDER_ANCHORS.find((layerId) => layerIds.includes(layerId));
+      const cityLayerAnchor = CITY_LAYER_ANCHORS
+        .filter((layerId) => layerIds.includes(layerId))
+        .sort((first, second) => layerIds.indexOf(first) - layerIds.indexOf(second))[0];
+      return cityLayerAnchor ?? FALLBACK_ORDER_ANCHORS.find((layerId) => layerIds.includes(layerId));
     } catch (error) {
       this.warnOnce('getStyle', '[OrbitalSurveyor] Failed to inspect map style', error);
       return undefined;
@@ -515,24 +529,6 @@ export class RasterLayerManager {
     } catch (error) {
       this.warnOnce(`setLayoutProperty:${layerId}:${name}`, `[OrbitalSurveyor] Failed to set layout property ${name} on ${layerId}`, error);
     }
-  }
-
-  private hideGameLayer(layerId: string): void {
-    if (!this.map || !this.hasLayer(layerId)) return;
-    const visibility = this.getLayerVisibility(layerId);
-    if (visibility === null || visibility === 'none') return;
-
-    if (!this.hiddenGameLayerVisibilities.has(layerId)) {
-      this.hiddenGameLayerVisibilities.set(layerId, visibility);
-    }
-    this.setGameLayerVisibility(layerId, 'none');
-  }
-
-  private restoreGameLayerVisibility(layerId: string): void {
-    if (!this.map || !this.hiddenGameLayerVisibilities.has(layerId)) return;
-    const visibility = this.hiddenGameLayerVisibilities.get(layerId)!;
-    this.hiddenGameLayerVisibilities.delete(layerId);
-    this.setGameLayerVisibility(layerId, visibility);
   }
 
   private setGameLayerVisibility(layerId: string, visibility: 'visible' | 'none'): void {

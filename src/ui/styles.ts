@@ -4,7 +4,10 @@ export function injectSurveyorStyles(): void {
   style.id = 'orbital-surveyor-stylesheet';
   style.textContent = `
 	    .os-panel {
-	      max-height: calc(100vh - 96px);
+	      box-sizing: border-box;
+	      height: 100%;
+	      max-height: min(100%, calc(100vh - 96px));
+	      min-height: 0;
 	      overflow-y: auto;
 	      scrollbar-width: thin;
 	    }

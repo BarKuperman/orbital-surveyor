@@ -99,7 +99,8 @@ export function SurveyorPanel({ store, onSettingsChange }: Props) {
         padding: 12,
         width: '100%',
         minHeight: 0,
-        maxHeight: 'calc(100vh - 96px)',
+        height: '100%',
+        maxHeight: 'min(100%, calc(100vh - 96px))',
         overflowY: 'auto',
       }}
     >
@@ -147,7 +148,7 @@ export function SurveyorPanel({ store, onSettingsChange }: Props) {
       </OverlaySection>
 
       <PanelSection
-        title="Layer filtering"
+        title="Layer filtering (Beta)"
         description={hasVisibleCityLayer ? 'Custom layer mix' : 'Default overlay view'}
         icon={LayersIcon}
         open={layersOpen}

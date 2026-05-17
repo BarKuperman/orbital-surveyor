@@ -43,7 +43,7 @@ Controlled layer IDs:
 - Parks: `parks-large`, `parks-small`
 - General tiles: `general-tiles`
 - Roads: `road-labels`, `intersections-layer`, `road-lines`
-- Airports: `runways-taxiways`
+- Airports: `airports`,`runways-taxiways`
 - Area labels: `neighborhood-labels`, `suburb-labels`, `city-labels`
 
 Use Reset in the Map layers section to return all controlled layers to the hidden-by-default overlay view.

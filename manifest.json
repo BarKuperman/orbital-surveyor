@@ -10,5 +10,6 @@
   "main": "index.js",
   "dependencies": {
     "subway-builder": ">=1.2.0"
-  }
+  },
+  "keywords": ["subway-builder", "mod", "satellite", "visual", "terrain"]
 }

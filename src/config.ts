@@ -3,8 +3,6 @@ export const MOD_NAME = 'Orbital Surveyor';
 export const MOD_VERSION = '1.0.0';
 export const TAG = '[OrbitalSurveyor]';
 
-export type OverlayMode = 'base' | 'satellite' | 'terrain' | 'both';
-
 export type ProviderLayer = 'satellite' | 'terrain';
 
 export type ProviderOption = {
@@ -30,7 +28,8 @@ export type CityLayerVisibility = Record<CityLayerId, boolean>;
 
 export type SurveyorSettings = {
   proxyBaseUrl: string;
-  mode: OverlayMode;
+  satelliteEnabled: boolean;
+  terrainEnabled: boolean;
   satelliteProvider: string;
   terrainProvider: string;
   satelliteOpacity: number;
@@ -75,10 +74,11 @@ export const PROVIDERS: ProviderOption[] = [
 
 export const DEFAULT_SETTINGS: SurveyorSettings = {
   proxyBaseUrl: DEFAULT_PROXY_BASE_URL,
-  mode: 'base',
+  satelliteEnabled: false,
+  terrainEnabled: false,
   satelliteProvider: 'maptiler',
   terrainProvider: 'maptiler',
-  satelliteOpacity: 0.85,
+  satelliteOpacity: 1,
   terrainExaggeration: 1.4,
   cityLayers: { ...DEFAULT_CITY_LAYERS },
 };
@@ -96,10 +96,11 @@ export function mergeSettings(value: unknown): SurveyorSettings {
 
   return {
     proxyBaseUrl: normalizeProxyBaseUrl(input.proxyBaseUrl ?? DEFAULT_SETTINGS.proxyBaseUrl),
-    mode: isOverlayMode(input.mode) ? input.mode : DEFAULT_SETTINGS.mode,
+    satelliteEnabled: normalizeBoolean(input.satelliteEnabled, DEFAULT_SETTINGS.satelliteEnabled),
+    terrainEnabled: normalizeBoolean(input.terrainEnabled, DEFAULT_SETTINGS.terrainEnabled),
     satelliteProvider: normalizeSatelliteProvider(input.satelliteProvider, input),
     terrainProvider: input.terrainProvider || DEFAULT_SETTINGS.terrainProvider,
-    satelliteOpacity: normalizeOpacity(input.satelliteOpacity, DEFAULT_SETTINGS.satelliteOpacity),
+    satelliteOpacity: 1,
     terrainExaggeration: normalizeExaggeration(
       input.terrainExaggeration ?? input.terrainOpacity,
       DEFAULT_SETTINGS.terrainExaggeration,
@@ -123,13 +124,8 @@ function normalizeSatelliteProvider(
   return looksLikeOldDefault ? DEFAULT_SETTINGS.satelliteProvider : value;
 }
 
-function isOverlayMode(value: unknown): value is OverlayMode {
-  return value === 'base' || value === 'satellite' || value === 'terrain' || value === 'both';
-}
-
-function normalizeOpacity(value: unknown, fallback: number): number {
-  if (typeof value !== 'number' || Number.isNaN(value)) return fallback;
-  return Math.min(1, Math.max(0, value));
+function normalizeBoolean(value: unknown, fallback: boolean): boolean {
+  return typeof value === 'boolean' ? value : fallback;
 }
 
 function normalizeExaggeration(value: unknown, fallback: number): number {

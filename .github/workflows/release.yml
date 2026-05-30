@@ -46,7 +46,6 @@ jobs:
         run: |
           set -euo pipefail
 
-          MOD_NAME="$(node -p "require('./manifest.json').name")"
           MOD_VERSION="$(node -p "require('./manifest.json').version")"
           if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
             RELEASE_TAG="${GITHUB_REF_NAME}"
@@ -54,7 +53,7 @@ jobs:
             RELEASE_TAG="v${MOD_VERSION}-manual.${GITHUB_RUN_NUMBER}"
           fi
           ZIP_NAME="orbital-surveyor-${RELEASE_TAG}.zip"
-          RELEASE_TITLE="${MOD_NAME} ${MOD_VERSION}"
+          RELEASE_TITLE="${RELEASE_TAG}"
 
           rm -rf release
           mkdir -p release
@@ -68,12 +67,43 @@ jobs:
             echo "release_title=$RELEASE_TITLE"
           } >> "$GITHUB_ENV"
 
+      - name: Generate release notes
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            const escapeRegExp = (value) =>
+              value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+            const { owner, repo } = context.repo;
+            const notes = await github.rest.repos.generateReleaseNotes({
+              owner,
+              repo,
+              tag_name: process.env.release_tag,
+              target_commitish: context.sha,
+            });
+
+            const pullUrlPattern = new RegExp(
+              `https://github\\.com/${escapeRegExp(owner)}/${escapeRegExp(repo)}/pull/(\\d+)`,
+              'g',
+            );
+            const compareUrlPattern = new RegExp(
+              `https://github\\.com/${escapeRegExp(owner)}/${escapeRegExp(repo)}/compare/([^\\s)]+)`,
+              'g',
+            );
+            const body = (notes.data.body || '')
+              .replace(pullUrlPattern, '#$1')
+              .replace(compareUrlPattern, (fullUrl, range) => `[${range}](${fullUrl})`);
+
+            fs.writeFileSync('release-notes.md', body);
+
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.release_tag }}
           name: ${{ env.release_title }}
-          generate_release_notes: true
+          body_path: release-notes.md
           prerelease: ${{ contains(env.release_tag, '-alpha') || contains(env.release_tag, '-beta') || contains(env.release_tag, '-rc') }}
           make_latest: ${{ contains(env.release_tag, '-') && 'false' || 'true' }}
           overwrite_files: true

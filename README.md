@@ -28,7 +28,7 @@ Subway Builder mod that adds satellite imagery and real 3D terrain to the in-gam
 
 7. Leave the proxy window open while playing.
 8. Enable Orbital Surveyor in Subway Builder under Settings > Mods.
-9. Open the Orbital Surveyor panel in-game and choose Base, Satellite, Terrain, or Both.
+9. Open the Orbital Surveyor panel in-game and enable Satellite, Terrain, or Street View as needed.
 
 ## Map Layer Filtering
 
@@ -48,6 +48,12 @@ Controlled layer IDs:
 
 Use Reset in the Map layers section to return all controlled layers to the hidden-by-default overlay view.
 
+## Street View
+
+Street View mode shows Google's Street View availability overlay above the in-game roads. The game loads those availability tiles through the local Orbital Surveyor proxy, so Subway Builder does not need direct internet access.
+
+When Street View mode is enabled, clicking the map opens Google Maps Street View at the clicked location in your external browser. The Street View availability overlay does not require a Google Maps API key.
+
 ## Terrain Reloads
 
 Terrain mode is heavier than the normal map. When Subway Builder reloads its game layers, Orbital Surveyor's terrain has to reload too.
@@ -61,6 +67,10 @@ The proxy defaults to `http://127.0.0.1:8787` and exposes:
 - `GET /health`
 - `GET /providers`
 - `GET /tiles/:provider/:layer/:z/:x/:y`
+
+Street View availability is available without a Google Maps API key through:
+
+- `GET /tiles/streetview/availability/:z/:x/:y`
 
 Provider API keys are read only by `proxy.js` from environment variables or `.env`.
 
@@ -89,6 +99,7 @@ Built-in provider IDs:
 - `maptiler`: Default satellite provider through the `satellite-v4` map, and `terrain-rgb-v2` DEM tiles for actual MapLibre 3D terrain.
 - `mapterhorn`: Optional open terrain provider using Terrarium-encoded WebP DEM tiles from `https://tiles.mapterhorn.com/{z}/{x}/{y}.webp`.
 - `google`: Optional Google Map Tiles API satellite tiles.
+- `streetview`: Google Street View availability overlay from `https://mts1.googleapis.com/vt`.
 - `custom`: Optional XYZ templates from `CUSTOM_SATELLITE_URL` and `CUSTOM_TERRAIN_URL`.
 
 For MapTiler terrain, the default upstream URL is:

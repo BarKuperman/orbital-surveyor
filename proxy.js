@@ -16,6 +16,10 @@ const MAPTILER_API_KEY = process.env.MAPTILER_API_KEY || '';
 const googleSessions = new Map();
 
 const providers = {
+  streetview: {
+    layers: ['availability'],
+    configured: () => true,
+  },
   google: {
     layers: ['satellite', 'terrain'],
     configured: () => Boolean(GOOGLE_MAPS_API_KEY),
@@ -92,10 +96,14 @@ async function handleTile(response, provider, layer, z, x, y) {
   }
 
   const upstreamUrl = await resolveTileUrl(provider, layer, z, x, y);
-  proxyImage(response, upstreamUrl);
+  proxyImage(response, upstreamUrl, getTileRequestHeaders(provider, layer));
 }
 
 async function resolveTileUrl(provider, layer, z, x, y) {
+  if (provider === 'streetview' && layer === 'availability') {
+    return `https://mts1.googleapis.com/vt?hl=en-US&lyrs=svv|cb_client:apiv3&style=40,18&x=${encodeURIComponent(x)}&y=${encodeURIComponent(y)}&z=${encodeURIComponent(z)}`;
+  }
+
   if (provider === 'google') {
     const session = await getGoogleSession(layer);
     return `https://tile.googleapis.com/v1/2dtiles/${z}/${x}/${y}?session=${encodeURIComponent(session)}&key=${encodeURIComponent(GOOGLE_MAPS_API_KEY)}`;
@@ -137,6 +145,22 @@ function resolveMapTilerTarget(layer) {
   return { kind: 'tiles', id: id === 'terrain' ? 'terrain-rgb-v2' : id, format };
 }
 
+function getTileRequestHeaders(provider, layer) {
+  if (provider !== 'streetview' || layer !== 'availability') {
+    return {};
+  }
+
+  return {
+    'accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+    'accept-language': 'en-US,en;q=0.9',
+    'referer': 'https://www.google.com/',
+    'sec-fetch-dest': 'image',
+    'sec-fetch-mode': 'no-cors',
+    'sec-fetch-site': 'cross-site',
+    'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+  };
+}
+
 async function getGoogleSession(layer) {
   const cached = googleSessions.get(layer);
   if (cached && cached.expiresAt > Date.now() + 60000) {
@@ -171,8 +195,8 @@ async function getGoogleSession(layer) {
   return result.session;
 }
 
-function proxyImage(response, upstreamUrl) {
-  https.get(upstreamUrl, (upstream) => {
+function proxyImage(response, upstreamUrl, headers = {}) {
+  https.get(upstreamUrl, { headers }, (upstream) => {
     const contentType = upstream.headers['content-type'] || 'application/octet-stream';
 
     if ((upstream.statusCode || 500) >= 400) {

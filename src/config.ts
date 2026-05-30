@@ -30,6 +30,7 @@ export type SurveyorSettings = {
   proxyBaseUrl: string;
   satelliteEnabled: boolean;
   terrainEnabled: boolean;
+  streetViewEnabled: boolean;
   satelliteProvider: string;
   terrainProvider: string;
   satelliteOpacity: number;
@@ -76,6 +77,7 @@ export const DEFAULT_SETTINGS: SurveyorSettings = {
   proxyBaseUrl: DEFAULT_PROXY_BASE_URL,
   satelliteEnabled: false,
   terrainEnabled: false,
+  streetViewEnabled: false,
   satelliteProvider: 'maptiler',
   terrainProvider: 'maptiler',
   satelliteOpacity: 1,
@@ -98,6 +100,7 @@ export function mergeSettings(value: unknown): SurveyorSettings {
     proxyBaseUrl: normalizeProxyBaseUrl(input.proxyBaseUrl ?? DEFAULT_SETTINGS.proxyBaseUrl),
     satelliteEnabled: normalizeBoolean(input.satelliteEnabled, DEFAULT_SETTINGS.satelliteEnabled),
     terrainEnabled: normalizeBoolean(input.terrainEnabled, DEFAULT_SETTINGS.terrainEnabled),
+    streetViewEnabled: normalizeBoolean(input.streetViewEnabled, DEFAULT_SETTINGS.streetViewEnabled),
     satelliteProvider: normalizeSatelliteProvider(input.satelliteProvider, input),
     terrainProvider: input.terrainProvider || DEFAULT_SETTINGS.terrainProvider,
     satelliteOpacity: 1,

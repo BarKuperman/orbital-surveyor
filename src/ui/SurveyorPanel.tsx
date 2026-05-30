@@ -18,6 +18,7 @@ const icons = api.utils.icons as Record<string, Component>;
 const ChevronDown = icons.ChevronDown;
 const SatelliteIcon = icons.Satellite;
 const TerrainIcon = icons.Mountain;
+const StreetViewIcon = icons.StreetView ?? icons.MapPin;
 const LayersIcon = icons.Layers;
 const layerIcons = {
   buildings: icons.Building,
@@ -39,6 +40,7 @@ export function SurveyorPanel({ store, onSettingsChange }: Props) {
   const [proxyDraft, setProxyDraft] = useState(snapshot.settings.proxyBaseUrl);
   const [satelliteOpen, setSatelliteOpen] = useState(snapshot.settings.satelliteEnabled);
   const [terrainOpen, setTerrainOpen] = useState(snapshot.settings.terrainEnabled);
+  const [streetViewOpen, setStreetViewOpen] = useState(false);
   const [layersOpen, setLayersOpen] = useState(false);
 
   useEffect(() => store.subscribe(() => setSnapshot(store.getSnapshot())), [store]);
@@ -147,6 +149,16 @@ export function SurveyorPanel({ store, onSettingsChange }: Props) {
         />
       </OverlaySection>
 
+      <OverlaySection
+        title="Street View"
+        description={snapshot.settings.streetViewEnabled ? 'Availability visible' : 'Availability hidden'}
+        icon={StreetViewIcon}
+        enabled={snapshot.settings.streetViewEnabled}
+        open={streetViewOpen}
+        onOpenChange={setStreetViewOpen}
+        onEnabledChange={(streetViewEnabled) => updateSettings({ streetViewEnabled })}
+      />
+
       <PanelSection
         title="Layer filtering (Beta)"
         description={hasVisibleCityLayer ? 'Custom layer mix' : 'Default overlay view'}
@@ -232,10 +244,11 @@ function OverlaySection({
   icon?: Component;
   enabled: boolean;
   open: boolean;
-  children: unknown;
+  children?: unknown;
   onOpenChange: (open: boolean) => void;
   onEnabledChange: (enabled: boolean) => void;
 }) {
+  const body = children ? <div className="flex flex-col gap-3">{children}</div> : null;
   return (
     <PanelSection
       title={title}
@@ -250,7 +263,7 @@ function OverlaySection({
         />
       )}
     >
-      <div className="flex flex-col gap-3">{children}</div>
+      {body}
     </PanelSection>
   );
 }
@@ -269,23 +282,26 @@ function PanelSection({
   icon?: Component;
   open: boolean;
   action?: unknown;
-  children: unknown;
+  children?: unknown;
   onOpenChange: (open: boolean) => void;
 }) {
+  const hasBody = Boolean(children);
   return (
     <section className="os-section">
       <div className="os-section-header">
         <button
           type="button"
           className="flex min-w-0 flex-1 items-center gap-2 text-left"
-          onClick={() => onOpenChange(!open)}
+          onClick={() => {
+            if (hasBody) onOpenChange(!open);
+          }}
         >
           {Icon ? <Icon size={15} className="shrink-0 text-muted-foreground" /> : null}
           <span className="min-w-0 flex-1">
             <span className="block text-sm font-semibold leading-tight">{title}</span>
             <span className="block truncate text-xs text-muted-foreground">{description}</span>
           </span>
-          {ChevronDown ? (
+          {hasBody && ChevronDown ? (
             <ChevronDown
               size={15}
               className={[
@@ -293,13 +309,13 @@ function PanelSection({
                 open ? 'rotate-180' : '',
               ].join(' ')}
             />
-          ) : (
+          ) : hasBody ? (
             <span className="text-xs text-muted-foreground">{open ? 'Hide' : 'Show'}</span>
-          )}
+          ) : null}
         </button>
         {action ? <div className="shrink-0">{action}</div> : null}
       </div>
-      {open ? <div className="os-section-body">{children}</div> : null}
+      {open && hasBody ? <div className="os-section-body">{children}</div> : null}
     </section>
   );
 }

@@ -1,8 +1,8 @@
 import { CITY_LAYER_GROUPS, MOD_ID, type SurveyorSettings } from './config';
 
 type MapLike = {
-  on: (type: string, listener: () => void) => void;
-  off: (type: string, listener: () => void) => void;
+  on: (type: string, listener: (event?: unknown) => void) => void;
+  off: (type: string, listener: (event?: unknown) => void) => void;
   getSource: (id: string) => unknown;
   addSource: (id: string, source: Record<string, unknown>) => void;
   removeSource: (id: string) => void;
@@ -20,10 +20,18 @@ type MapLike = {
   setStyle?: (style: unknown, options?: unknown) => unknown;
   setTerrain?: (terrain: { source: string; exaggeration?: number } | null) => void;
   getTerrain?: () => { source: string; exaggeration?: number } | null;
+  getCanvas?: () => { style: { cursor: string } };
+};
+
+type ExternalUrlBridge = {
+  openExternalUrl?: (url: string) => Promise<unknown> | unknown;
+  openExternalURL?: (url: string) => Promise<unknown> | unknown;
 };
 
 const SATELLITE_SOURCE_ID = `${MOD_ID}:satellite-source`;
 const SATELLITE_LAYER_ID = `${MOD_ID}:satellite-layer`;
+const STREET_VIEW_SOURCE_ID = `${MOD_ID}:street-view-source`;
+const STREET_VIEW_LAYER_ID = `${MOD_ID}:street-view-layer`;
 const TERRAIN_DEM_SOURCE_ID = `${MOD_ID}:terrain-dem-source`;
 const GAME_BASE_SOURCE_IDS = ['general-tiles'];
 const GAME_CONTROLLED_LABEL_LAYERS = new Set(['ocean-depth-labels']);
@@ -40,12 +48,23 @@ const FALLBACK_ORDER_ANCHORS = [
   'demand-points',
   'road-labels',
 ];
+const ROAD_LAYER_ANCHORS = ['road-labels', 'intersections-layer', 'road-lines'];
+const STREET_VIEW_UPPER_ANCHORS = [
+  'track-elevations',
+  'tracks',
+  'blueprint-tracks',
+  'stations',
+  'station-labels',
+  'routes',
+  'trains',
+  'demand-points',
+];
 
 type LayerDefinition = {
   sourceId: string;
   layerId: string;
   providerId: string;
-  layerName: 'satellite' | 'terrain';
+  layerName: 'satellite' | 'terrain' | 'streetview';
   opacity: number;
   visible: boolean;
   attribution?: string;
@@ -77,6 +96,8 @@ export class RasterLayerManager {
   private originalSetStyle: MapLike['setStyle'] | null = null;
   private warnedKeys = new Set<string>();
   private filteredGameLayers = new Set<string>();
+  private streetViewClickHandler: ((event?: unknown) => void) | null = null;
+  private previousCanvasCursor: string | null = null;
 
   setMap(map: MapLike): void {
     if (this.map === map) return;
@@ -84,19 +105,23 @@ export class RasterLayerManager {
     this.map = map;
     this.patchSetStyle();
     this.attachHandlers();
+    this.updateStreetViewClickHandler();
     this.ensureLayers();
   }
 
   setSettings(settings: SurveyorSettings): void {
     this.settings = { ...settings };
+    this.updateStreetViewClickHandler();
     this.ensureLayers();
   }
 
   reset(): void {
     this.clearScheduledEnsure();
+    this.removeStreetViewClickHandler();
     this.restoreCityLayerVisibility();
     this.disableTerrain();
     this.removeSource(TERRAIN_DEM_SOURCE_ID);
+    this.removeLayer(STREET_VIEW_LAYER_ID, STREET_VIEW_SOURCE_ID);
     this.removeLayer(SATELLITE_LAYER_ID, SATELLITE_SOURCE_ID);
     this.lastSourceKeys.clear();
   }
@@ -135,6 +160,7 @@ export class RasterLayerManager {
       this.map.off('data', this.dataHandler);
       this.dataHandler = null;
     }
+    this.removeStreetViewClickHandler();
     this.clearScheduledEnsure();
     this.restoreSetStyle();
   }
@@ -154,6 +180,16 @@ export class RasterLayerManager {
       opacity: 1,
       visible: this.settings.satelliteEnabled,
       attribution: 'Imagery © Google',
+    });
+
+    this.ensureRasterLayer({
+      sourceId: STREET_VIEW_SOURCE_ID,
+      layerId: STREET_VIEW_LAYER_ID,
+      providerId: 'streetview',
+      layerName: 'streetview',
+      opacity: 1,
+      visible: this.settings.streetViewEnabled,
+      attribution: 'Street View © Google',
     });
 
     this.ensureTerrain({
@@ -267,18 +303,23 @@ export class RasterLayerManager {
     });
   }
 
-  private buildTileUrl(providerId: string, layerName: 'satellite' | 'terrain'): string {
+  private buildTileUrl(providerId: string, layerName: 'satellite' | 'terrain' | 'streetview'): string {
     const proxyBaseUrl = this.settings?.proxyBaseUrl ?? '';
+    if (layerName === 'streetview') {
+      return `${proxyBaseUrl}/tiles/streetview/availability/{z}/{x}/{y}`;
+    }
     return `${proxyBaseUrl}/tiles/${encodeURIComponent(providerId)}/${layerName}/{z}/{x}/{y}`;
   }
 
   private reorderLayers(): void {
     if (!this.map) return;
     const beforeId = this.findBeforeLayerId();
-    [SATELLITE_LAYER_ID].forEach((layerId) => {
-      if (!this.hasLayer(layerId)) return;
-      this.moveLayer(layerId, beforeId);
-    });
+    if (this.hasLayer(SATELLITE_LAYER_ID)) {
+      this.moveLayer(SATELLITE_LAYER_ID, beforeId);
+    }
+    if (this.hasLayer(STREET_VIEW_LAYER_ID)) {
+      this.moveLayer(STREET_VIEW_LAYER_ID, this.findBeforeStreetViewLayerId());
+    }
   }
 
   private applyCityLayerVisibility(): void {
@@ -324,6 +365,26 @@ export class RasterLayerManager {
     }
   }
 
+  private findBeforeStreetViewLayerId(): string | undefined {
+    if (!this.map) return undefined;
+    try {
+      const layerIds = this.map.getStyle().layers?.map((layer) => layer.id) ?? [];
+      const roadLayerIndexes = ROAD_LAYER_ANCHORS
+        .map((layerId) => layerIds.indexOf(layerId))
+        .filter((index) => index >= 0);
+      if (!roadLayerIndexes.length) return this.findBeforeLayerId();
+
+      const topRoadLayerIndex = Math.max(...roadLayerIndexes);
+      return STREET_VIEW_UPPER_ANCHORS
+        .map((layerId) => ({ layerId, index: layerIds.indexOf(layerId) }))
+        .filter(({ index }) => index > topRoadLayerIndex)
+        .sort((first, second) => first.index - second.index)[0]?.layerId;
+    } catch (error) {
+      this.warnOnce('getStyle:streetView', '[OrbitalSurveyor] Failed to inspect map style for Street View ordering', error);
+      return undefined;
+    }
+  }
+
   private removeLayer(layerId: string, sourceId: string): void {
     if (!this.map) return;
     if (this.hasLayer(layerId)) {
@@ -338,6 +399,92 @@ export class RasterLayerManager {
     if (!this.map?.setTerrain) return;
     if (this.map.getTerrain && !this.getActiveTerrain()) return;
     this.setTerrain(null);
+  }
+
+  private updateStreetViewClickHandler(): void {
+    if (!this.map || !this.settings?.streetViewEnabled) {
+      this.removeStreetViewClickHandler();
+      return;
+    }
+
+    if (this.streetViewClickHandler) return;
+    this.streetViewClickHandler = (event?: unknown) => this.openStreetView(event);
+    this.map.on('click', this.streetViewClickHandler);
+    this.setStreetViewCursor();
+  }
+
+  private removeStreetViewClickHandler(): void {
+    if (this.map && this.streetViewClickHandler) {
+      this.map.off('click', this.streetViewClickHandler);
+    }
+    this.streetViewClickHandler = null;
+    this.restoreStreetViewCursor();
+  }
+
+  private openStreetView(event?: unknown): void {
+    const streetViewEvent = event as {
+      lngLat?: { lng?: unknown; lat?: unknown };
+      originalEvent?: Event;
+    } | undefined;
+    const lat = typeof streetViewEvent?.lngLat?.lat === 'number'
+      ? streetViewEvent.lngLat.lat
+      : Number.NaN;
+    const lng = typeof streetViewEvent?.lngLat?.lng === 'number'
+      ? streetViewEvent.lngLat.lng
+      : Number.NaN;
+
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90) {
+      this.warnOnce(
+        'streetView:invalidCoordinate',
+        '[OrbitalSurveyor] Street View click did not include a valid coordinate',
+        new Error(`Invalid coordinate: ${String(lat)}, ${String(lng)}`),
+      );
+      return;
+    }
+
+    const normalizedLng = ((((lng + 180) % 360) + 360) % 360) - 180;
+    const url = `https://www.google.com/maps?layer=c&cbll=${lat.toFixed(6)},${normalizedLng.toFixed(6)}`;
+    streetViewEvent?.originalEvent?.preventDefault();
+    streetViewEvent?.originalEvent?.stopPropagation();
+    void this.openExternalUrl(url);
+  }
+
+  private async openExternalUrl(url: string): Promise<void> {
+    const bridges = [
+      window.electron,
+      (window as Window & { electronAPI?: ExternalUrlBridge }).electronAPI,
+    ].filter(Boolean) as ExternalUrlBridge[];
+
+    for (const bridge of bridges) {
+      const openExternal = bridge.openExternalUrl ?? bridge.openExternalURL;
+      if (typeof openExternal !== 'function') continue;
+      try {
+        await openExternal.call(bridge, url);
+        return;
+      } catch (error) {
+        this.warnOnce('streetView:openExternalUrl', '[OrbitalSurveyor] Failed to open Street View externally', error);
+      }
+    }
+
+    this.warnOnce(
+      'streetView:noExternalBridge',
+      '[OrbitalSurveyor] No external URL bridge is available for Street View',
+      new Error(url),
+    );
+  }
+
+  private setStreetViewCursor(): void {
+    const canvas = this.map?.getCanvas?.();
+    if (!canvas || this.previousCanvasCursor !== null) return;
+    this.previousCanvasCursor = canvas.style.cursor;
+    canvas.style.cursor = 'crosshair';
+  }
+
+  private restoreStreetViewCursor(): void {
+    const canvas = this.map?.getCanvas?.();
+    if (!canvas || this.previousCanvasCursor === null) return;
+    canvas.style.cursor = this.previousCanvasCursor;
+    this.previousCanvasCursor = null;
   }
 
   private removeSource(sourceId: string): void {

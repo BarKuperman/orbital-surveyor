@@ -18,6 +18,7 @@ const icons = api.utils.icons as Record<string, Component>;
 const ChevronDown = icons.ChevronDown;
 const SatelliteIcon = icons.Satellite;
 const TerrainIcon = icons.Mountain;
+const StreetViewIcon = icons.StreetView ?? icons.MapPin;
 const LayersIcon = icons.Layers;
 const layerIcons = {
   buildings: icons.Building,
@@ -147,6 +148,14 @@ export function SurveyorPanel({ store, onSettingsChange }: Props) {
         />
       </OverlaySection>
 
+      <OverlaySection
+        title="Street View"
+        description={snapshot.settings.streetViewEnabled ? 'Availability visible' : 'Availability hidden'}
+        icon={StreetViewIcon}
+        enabled={snapshot.settings.streetViewEnabled}
+        onEnabledChange={(streetViewEnabled) => updateSettings({ streetViewEnabled })}
+      />
+
       <PanelSection
         title="Layer filtering (Beta)"
         description={hasVisibleCityLayer ? 'Custom layer mix' : 'Default overlay view'}
@@ -231,17 +240,18 @@ function OverlaySection({
   description: string;
   icon?: Component;
   enabled: boolean;
-  open: boolean;
-  children: unknown;
-  onOpenChange: (open: boolean) => void;
+  open?: boolean;
+  children?: unknown;
+  onOpenChange?: (open: boolean) => void;
   onEnabledChange: (enabled: boolean) => void;
 }) {
+  const body = children ? <div className="flex flex-col gap-3">{children}</div> : null;
   return (
     <PanelSection
       title={title}
       description={description}
       icon={icon}
-      open={open}
+      open={open ?? false}
       onOpenChange={onOpenChange}
       action={(
         <ToggleButton
@@ -250,7 +260,7 @@ function OverlaySection({
         />
       )}
     >
-      <div className="flex flex-col gap-3">{children}</div>
+      {body}
     </PanelSection>
   );
 }
@@ -269,23 +279,26 @@ function PanelSection({
   icon?: Component;
   open: boolean;
   action?: unknown;
-  children: unknown;
-  onOpenChange: (open: boolean) => void;
+  children?: unknown;
+  onOpenChange?: (open: boolean) => void;
 }) {
+  const hasBody = Boolean(children);
   return (
     <section className="os-section">
       <div className="os-section-header">
         <button
           type="button"
           className="flex min-w-0 flex-1 items-center gap-2 text-left"
-          onClick={() => onOpenChange(!open)}
+          onClick={() => {
+            if (hasBody) onOpenChange?.(!open);
+          }}
         >
           {Icon ? <Icon size={15} className="shrink-0 text-muted-foreground" /> : null}
           <span className="min-w-0 flex-1">
             <span className="block text-sm font-semibold leading-tight">{title}</span>
             <span className="block truncate text-xs text-muted-foreground">{description}</span>
           </span>
-          {ChevronDown ? (
+          {hasBody && ChevronDown ? (
             <ChevronDown
               size={15}
               className={[
@@ -293,13 +306,13 @@ function PanelSection({
                 open ? 'rotate-180' : '',
               ].join(' ')}
             />
-          ) : (
+          ) : hasBody ? (
             <span className="text-xs text-muted-foreground">{open ? 'Hide' : 'Show'}</span>
-          )}
+          ) : null}
         </button>
         {action ? <div className="shrink-0">{action}</div> : null}
       </div>
-      {open ? <div className="os-section-body">{children}</div> : null}
+      {open && hasBody ? <div className="os-section-body">{children}</div> : null}
     </section>
   );
 }
@@ -342,23 +355,6 @@ function LayerTile({
       type="button"
       className="os-layer-tile"
       data-enabled={enabled ? 'true' : 'false'}
-      style={{
-        minHeight: 48,
-        borderRadius: 8,
-        border: enabled ? '1px solid hsl(var(--primary))' : '1px solid hsl(var(--border))',
-        background: enabled ? 'hsl(var(--primary) / 0.18)' : 'hsl(var(--muted) / 0.32)',
-        color: enabled ? 'hsl(var(--foreground))' : 'hsl(var(--muted-foreground))',
-        padding: '7px 6px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 6,
-        fontSize: 12,
-        fontWeight: 700,
-        lineHeight: 1.1,
-        textAlign: 'center',
-        cursor: 'pointer',
-      }}
       onClick={onClick}
     >
       {Icon ? <Icon size={16} className="shrink-0" /> : null}

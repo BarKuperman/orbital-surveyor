@@ -9,7 +9,6 @@ export type ProviderOption = {
   id: string;
   label: string;
   layers: ProviderLayer[];
-  attribution?: string;
 };
 
 export const CITY_LAYER_GROUPS = [
@@ -30,9 +29,9 @@ export type SurveyorSettings = {
   proxyBaseUrl: string;
   satelliteEnabled: boolean;
   terrainEnabled: boolean;
+  streetViewEnabled: boolean;
   satelliteProvider: string;
   terrainProvider: string;
-  satelliteOpacity: number;
   terrainExaggeration: number;
   cityLayers: CityLayerVisibility;
 };
@@ -51,19 +50,16 @@ export const PROVIDERS: ProviderOption[] = [
     id: 'google',
     label: 'Google Map Tiles',
     layers: ['satellite'],
-    attribution: 'Imagery © Google',
   },
   {
     id: 'maptiler',
     label: 'MapTiler',
     layers: ['satellite', 'terrain'],
-    attribution: '© MapTiler © OpenStreetMap contributors',
   },
   {
     id: 'mapterhorn',
     label: 'Mapterhorn',
     layers: ['terrain'],
-    attribution: 'Terrain © Mapterhorn contributors',
   },
   {
     id: 'custom',
@@ -76,9 +72,9 @@ export const DEFAULT_SETTINGS: SurveyorSettings = {
   proxyBaseUrl: DEFAULT_PROXY_BASE_URL,
   satelliteEnabled: false,
   terrainEnabled: false,
+  streetViewEnabled: false,
   satelliteProvider: 'maptiler',
   terrainProvider: 'maptiler',
-  satelliteOpacity: 1,
   terrainExaggeration: 1.4,
   cityLayers: { ...DEFAULT_CITY_LAYERS },
 };
@@ -91,16 +87,16 @@ export function normalizeProxyBaseUrl(value: string): string {
 
 export function mergeSettings(value: unknown): SurveyorSettings {
   const input = value && typeof value === 'object'
-    ? value as Partial<SurveyorSettings> & { terrainOpacity?: number }
+    ? value as Partial<SurveyorSettings> & LegacySettings
     : {};
 
   return {
     proxyBaseUrl: normalizeProxyBaseUrl(input.proxyBaseUrl ?? DEFAULT_SETTINGS.proxyBaseUrl),
     satelliteEnabled: normalizeBoolean(input.satelliteEnabled, DEFAULT_SETTINGS.satelliteEnabled),
     terrainEnabled: normalizeBoolean(input.terrainEnabled, DEFAULT_SETTINGS.terrainEnabled),
+    streetViewEnabled: normalizeBoolean(input.streetViewEnabled, DEFAULT_SETTINGS.streetViewEnabled),
     satelliteProvider: normalizeSatelliteProvider(input.satelliteProvider, input),
     terrainProvider: input.terrainProvider || DEFAULT_SETTINGS.terrainProvider,
-    satelliteOpacity: 1,
     terrainExaggeration: normalizeExaggeration(
       input.terrainExaggeration ?? input.terrainOpacity,
       DEFAULT_SETTINGS.terrainExaggeration,
@@ -111,7 +107,7 @@ export function mergeSettings(value: unknown): SurveyorSettings {
 
 function normalizeSatelliteProvider(
   value: unknown,
-  input: Partial<SurveyorSettings> & { terrainOpacity?: number },
+  input: Partial<SurveyorSettings> & LegacySettings,
 ): string {
   if (typeof value !== 'string' || !value) return DEFAULT_SETTINGS.satelliteProvider;
 
@@ -119,10 +115,15 @@ function normalizeSatelliteProvider(
     value === 'google' &&
     input.terrainProvider === undefined &&
     input.proxyBaseUrl === DEFAULT_SETTINGS.proxyBaseUrl &&
-    input.satelliteOpacity === DEFAULT_SETTINGS.satelliteOpacity;
+    input.satelliteOpacity === 1;
 
   return looksLikeOldDefault ? DEFAULT_SETTINGS.satelliteProvider : value;
 }
+
+type LegacySettings = {
+  satelliteOpacity?: number;
+  terrainOpacity?: number;
+};
 
 function normalizeBoolean(value: unknown, fallback: boolean): boolean {
   return typeof value === 'boolean' ? value : fallback;

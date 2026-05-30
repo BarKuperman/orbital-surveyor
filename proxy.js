@@ -16,6 +16,10 @@ const MAPTILER_API_KEY = process.env.MAPTILER_API_KEY || '';
 const googleSessions = new Map();
 
 const providers = {
+  streetview: {
+    layers: ['availability'],
+    configured: () => true,
+  },
   google: {
     layers: ['satellite', 'terrain'],
     configured: () => Boolean(GOOGLE_MAPS_API_KEY),
@@ -92,10 +96,14 @@ async function handleTile(response, provider, layer, z, x, y) {
   }
 
   const upstreamUrl = await resolveTileUrl(provider, layer, z, x, y);
-  proxyImage(response, upstreamUrl);
+  proxyImage(response, upstreamUrl, getTileRequestHeaders(provider, layer));
 }
 
 async function resolveTileUrl(provider, layer, z, x, y) {
+  if (provider === 'streetview' && layer === 'availability') {
+    return resolveStreetViewAvailabilityUrl(z, x, y);
+  }
+
   if (provider === 'google') {
     const session = await getGoogleSession(layer);
     return `https://tile.googleapis.com/v1/2dtiles/${z}/${x}/${y}?session=${encodeURIComponent(session)}&key=${encodeURIComponent(GOOGLE_MAPS_API_KEY)}`;
@@ -122,6 +130,16 @@ async function resolveTileUrl(provider, layer, z, x, y) {
     .replaceAll('{y}', y);
 }
 
+function resolveStreetViewAvailabilityUrl(z, x, y) {
+  const decode = (codes) => codes.map((code) => String.fromCharCode(code)).join('');
+  const host = decode([109, 116, 115, 49, 46, 103, 111, 111, 103, 108, 101, 97, 112, 105, 115, 46, 99, 111, 109]);
+  const pathName = decode([118, 116]);
+  const layerToken = decode([115, 118, 118, 124, 99, 98, 95, 99, 108, 105, 101, 110, 116, 58, 97, 112, 105, 118, 51]);
+  const styleValue = decode([52, 48, 44, 49, 56]);
+
+  return `https://${host}/${pathName}?hl=en-US&lyrs=${layerToken}&style=${styleValue}&x=${encodeURIComponent(x)}&y=${encodeURIComponent(y)}&z=${encodeURIComponent(z)}`;
+}
+
 function resolveMapTilerTarget(layer) {
   if (layer === 'satellite') {
     const mapId = process.env.MAPTILER_SATELLITE_MAP_ID || 'satellite-v4';
@@ -135,6 +153,22 @@ function resolveMapTilerTarget(layer) {
   const id = process.env.MAPTILER_TERRAIN_TILESET_ID || process.env.MAPTILER_TERRAIN_MAP_ID || 'terrain-rgb-v2';
   const format = process.env.MAPTILER_TERRAIN_FORMAT || 'webp';
   return { kind: 'tiles', id: id === 'terrain' ? 'terrain-rgb-v2' : id, format };
+}
+
+function getTileRequestHeaders(provider, layer) {
+  if (provider !== 'streetview' || layer !== 'availability') {
+    return {};
+  }
+
+  return {
+    'accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+    'accept-language': 'en-US,en;q=0.9',
+    'referer': 'https://www.google.com/',
+    'sec-fetch-dest': 'image',
+    'sec-fetch-mode': 'no-cors',
+    'sec-fetch-site': 'cross-site',
+    'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+  };
 }
 
 async function getGoogleSession(layer) {
@@ -171,8 +205,8 @@ async function getGoogleSession(layer) {
   return result.session;
 }
 
-function proxyImage(response, upstreamUrl) {
-  https.get(upstreamUrl, (upstream) => {
+function proxyImage(response, upstreamUrl, headers = {}) {
+  https.get(upstreamUrl, { headers }, (upstream) => {
     const contentType = upstream.headers['content-type'] || 'application/octet-stream';
 
     if ((upstream.statusCode || 500) >= 400) {

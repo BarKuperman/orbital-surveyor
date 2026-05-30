@@ -21,7 +21,7 @@ export interface ElectronAPI {
   importMetroFile(): Promise<unknown>;
   setLicenseKey(key: string): Promise<void>;
 
-  openExternalURL(url: string): Promise<unknown>;
+  openExternalUrl(url: string): Promise<unknown>;
   openSaveFolder(): Promise<undefined>;
 
   /** Gets the absolute path to the game's "mods" folder, where users  place mod files. */

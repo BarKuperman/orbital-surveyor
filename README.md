@@ -20,11 +20,13 @@ Subway Builder mod that adds satellite imagery and real 3D terrain to the in-gam
    GOOGLE_MAPS_API_KEY=your_google_maps_key_here
    ```
 
-6. Start the proxy before opening or reloading the mod:
+6. Start the proxy before opening or reloading the mod by double-clicking the launcher for your OS:
 
-   ```bash
-   node proxy.js
-   ```
+   - Windows: `start-proxy-windows.cmd`
+   - macOS: `start-proxy-macos.command`
+   - Linux: `start-proxy-linux.sh`
+
+   You can also run `node proxy.js` manually from a terminal.
 
 7. Leave the proxy window open while playing.
 8. Enable Orbital Surveyor in Subway Builder under Settings > Mods.
@@ -83,6 +85,8 @@ pnpm dev:link
 ```
 
 Enable the mod in Subway Builder under Settings > Mods. Start the proxy before enabling satellite or terrain overlays in-game.
+
+Release builds copy `proxy.js`, `.env.example`, and the one-click proxy launchers into `dist/` alongside the mod files.
 
 Useful checks:
 

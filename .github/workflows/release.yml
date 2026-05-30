@@ -46,47 +46,38 @@ jobs:
         run: |
           set -euo pipefail
 
-          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+          MOD_NAME="$(node -p "require('./manifest.json').name")"
+          MOD_VERSION="$(node -p "require('./manifest.json').version")"
           if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
             RELEASE_TAG="${GITHUB_REF_NAME}"
           else
-            RELEASE_TAG="v${PACKAGE_VERSION}-manual.${GITHUB_RUN_NUMBER}"
+            RELEASE_TAG="v${MOD_VERSION}-manual.${GITHUB_RUN_NUMBER}"
           fi
           ZIP_NAME="orbital-surveyor-${RELEASE_TAG}.zip"
+          RELEASE_TITLE="${MOD_NAME} ${MOD_VERSION}"
 
           rm -rf release
           mkdir -p release
 
-          zip -j "release/$ZIP_NAME" \
-            dist/index.js \
-            dist/manifest.json \
-            proxy.js \
-            .env.example \
-            README.md
+          cp README.md dist/
+          (cd dist && zip -r "../release/$ZIP_NAME" .)
 
           {
             echo "zip_name=$ZIP_NAME"
             echo "release_tag=$RELEASE_TAG"
+            echo "release_title=$RELEASE_TITLE"
           } >> "$GITHUB_ENV"
 
       - name: Create GitHub release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          TITLE="Orbital Surveyor ${release_tag}"
-
-          if gh release view "$release_tag" >/dev/null 2>&1; then
-            gh release upload "$release_tag" \
-              "release/${zip_name}" \
-              "dist/manifest.json" \
-              --clobber
-          else
-            gh release create "$release_tag" \
-              "release/${zip_name}" \
-              "dist/manifest.json" \
-              --title "$TITLE" \
-              --notes "Download the zip, copy the files into your Subway Builder mods folder, create .env from .env.example, and run node proxy.js before enabling imagery."
-          fi
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.release_tag }}
+          name: ${{ env.release_title }}
+          generate_release_notes: true
+          prerelease: ${{ contains(env.release_tag, '-alpha') || contains(env.release_tag, '-beta') || contains(env.release_tag, '-rc') }}
+          make_latest: ${{ contains(env.release_tag, '-') && 'false' || 'true' }}
+          overwrite_files: true
+          fail_on_unmatched_files: true
+          files: |
+            release/${{ env.zip_name }}
+            dist/manifest.json

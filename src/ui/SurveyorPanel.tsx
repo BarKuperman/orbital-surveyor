@@ -40,7 +40,6 @@ export function SurveyorPanel({ store, onSettingsChange }: Props) {
   const [proxyDraft, setProxyDraft] = useState(snapshot.settings.proxyBaseUrl);
   const [satelliteOpen, setSatelliteOpen] = useState(snapshot.settings.satelliteEnabled);
   const [terrainOpen, setTerrainOpen] = useState(snapshot.settings.terrainEnabled);
-  const [streetViewOpen, setStreetViewOpen] = useState(false);
   const [layersOpen, setLayersOpen] = useState(false);
 
   useEffect(() => store.subscribe(() => setSnapshot(store.getSnapshot())), [store]);
@@ -154,8 +153,6 @@ export function SurveyorPanel({ store, onSettingsChange }: Props) {
         description={snapshot.settings.streetViewEnabled ? 'Availability visible' : 'Availability hidden'}
         icon={StreetViewIcon}
         enabled={snapshot.settings.streetViewEnabled}
-        open={streetViewOpen}
-        onOpenChange={setStreetViewOpen}
         onEnabledChange={(streetViewEnabled) => updateSettings({ streetViewEnabled })}
       />
 
@@ -243,9 +240,9 @@ function OverlaySection({
   description: string;
   icon?: Component;
   enabled: boolean;
-  open: boolean;
+  open?: boolean;
   children?: unknown;
-  onOpenChange: (open: boolean) => void;
+  onOpenChange?: (open: boolean) => void;
   onEnabledChange: (enabled: boolean) => void;
 }) {
   const body = children ? <div className="flex flex-col gap-3">{children}</div> : null;
@@ -254,7 +251,7 @@ function OverlaySection({
       title={title}
       description={description}
       icon={icon}
-      open={open}
+      open={open ?? false}
       onOpenChange={onOpenChange}
       action={(
         <ToggleButton
@@ -283,7 +280,7 @@ function PanelSection({
   open: boolean;
   action?: unknown;
   children?: unknown;
-  onOpenChange: (open: boolean) => void;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const hasBody = Boolean(children);
   return (
@@ -293,7 +290,7 @@ function PanelSection({
           type="button"
           className="flex min-w-0 flex-1 items-center gap-2 text-left"
           onClick={() => {
-            if (hasBody) onOpenChange(!open);
+            if (hasBody) onOpenChange?.(!open);
           }}
         >
           {Icon ? <Icon size={15} className="shrink-0 text-muted-foreground" /> : null}
@@ -358,23 +355,6 @@ function LayerTile({
       type="button"
       className="os-layer-tile"
       data-enabled={enabled ? 'true' : 'false'}
-      style={{
-        minHeight: 48,
-        borderRadius: 8,
-        border: enabled ? '1px solid hsl(var(--primary))' : '1px solid hsl(var(--border))',
-        background: enabled ? 'hsl(var(--primary) / 0.18)' : 'hsl(var(--muted) / 0.32)',
-        color: enabled ? 'hsl(var(--foreground))' : 'hsl(var(--muted-foreground))',
-        padding: '7px 6px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 6,
-        fontSize: 12,
-        fontWeight: 700,
-        lineHeight: 1.1,
-        textAlign: 'center',
-        cursor: 'pointer',
-      }}
       onClick={onClick}
     >
       {Icon ? <Icon size={16} className="shrink-0" /> : null}

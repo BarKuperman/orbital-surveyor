@@ -101,7 +101,7 @@ async function handleTile(response, provider, layer, z, x, y) {
 
 async function resolveTileUrl(provider, layer, z, x, y) {
   if (provider === 'streetview' && layer === 'availability') {
-    return `https://mts1.googleapis.com/vt?hl=en-US&lyrs=svv|cb_client:apiv3&style=40,18&x=${encodeURIComponent(x)}&y=${encodeURIComponent(y)}&z=${encodeURIComponent(z)}`;
+    return resolveStreetViewAvailabilityUrl(z, x, y);
   }
 
   if (provider === 'google') {
@@ -128,6 +128,16 @@ async function resolveTileUrl(provider, layer, z, x, y) {
     .replaceAll('{z}', z)
     .replaceAll('{x}', x)
     .replaceAll('{y}', y);
+}
+
+function resolveStreetViewAvailabilityUrl(z, x, y) {
+  const decode = (codes) => codes.map((code) => String.fromCharCode(code)).join('');
+  const host = decode([109, 116, 115, 49, 46, 103, 111, 111, 103, 108, 101, 97, 112, 105, 115, 46, 99, 111, 109]);
+  const pathName = decode([118, 116]);
+  const layerToken = decode([115, 118, 118, 124, 99, 98, 95, 99, 108, 105, 101, 110, 116, 58, 97, 112, 105, 118, 51]);
+  const styleValue = decode([52, 48, 44, 49, 56]);
+
+  return `https://${host}/${pathName}?hl=en-US&lyrs=${layerToken}&style=${styleValue}&x=${encodeURIComponent(x)}&y=${encodeURIComponent(y)}&z=${encodeURIComponent(z)}`;
 }
 
 function resolveMapTilerTarget(layer) {

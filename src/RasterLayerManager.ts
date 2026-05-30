@@ -23,11 +23,6 @@ type MapLike = {
   getCanvas?: () => { style: { cursor: string } };
 };
 
-type ExternalUrlBridge = {
-  openExternalUrl?: (url: string) => Promise<unknown> | unknown;
-  openExternalURL?: (url: string) => Promise<unknown> | unknown;
-};
-
 const SATELLITE_SOURCE_ID = `${MOD_ID}:satellite-source`;
 const SATELLITE_LAYER_ID = `${MOD_ID}:satellite-layer`;
 const STREET_VIEW_SOURCE_ID = `${MOD_ID}:street-view-source`;
@@ -450,27 +445,20 @@ export class RasterLayerManager {
   }
 
   private async openExternalUrl(url: string): Promise<void> {
-    const bridges = [
-      window.electron,
-      (window as Window & { electronAPI?: ExternalUrlBridge }).electronAPI,
-    ].filter(Boolean) as ExternalUrlBridge[];
-
-    for (const bridge of bridges) {
-      const openExternal = bridge.openExternalUrl ?? bridge.openExternalURL;
-      if (typeof openExternal !== 'function') continue;
-      try {
-        await openExternal.call(bridge, url);
-        return;
-      } catch (error) {
-        this.warnOnce('streetView:openExternalUrl', '[OrbitalSurveyor] Failed to open Street View externally', error);
-      }
+    if (!window.electron?.openExternalUrl) {
+      this.warnOnce(
+        'streetView:noExternalBridge',
+        '[OrbitalSurveyor] No external URL bridge is available for Street View',
+        new Error(url),
+      );
+      return;
     }
 
-    this.warnOnce(
-      'streetView:noExternalBridge',
-      '[OrbitalSurveyor] No external URL bridge is available for Street View',
-      new Error(url),
-    );
+    try {
+      await window.electron.openExternalUrl(url);
+    } catch (error) {
+      this.warnOnce('streetView:openExternalUrl', '[OrbitalSurveyor] Failed to open Street View externally', error);
+    }
   }
 
   private setStreetViewCursor(): void {

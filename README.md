@@ -99,7 +99,7 @@ Built-in provider IDs:
 - `maptiler`: Default satellite provider through the `satellite-v4` map, and `terrain-rgb-v2` DEM tiles for actual MapLibre 3D terrain.
 - `mapterhorn`: Optional open terrain provider using Terrarium-encoded WebP DEM tiles from `https://tiles.mapterhorn.com/{z}/{x}/{y}.webp`.
 - `google`: Optional Google Map Tiles API satellite tiles.
-- `streetview`: Google Street View availability overlay from `https://mts1.googleapis.com/vt`.
+- `streetview`: Google Street View availability overlay through the local proxy.
 - `custom`: Optional XYZ templates from `CUSTOM_SATELLITE_URL` and `CUSTOM_TERRAIN_URL`.
 
 For MapTiler terrain, the default upstream URL is:

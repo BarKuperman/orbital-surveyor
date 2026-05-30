@@ -36,6 +36,26 @@ export default defineConfig({
           src: 'manifest.json',
           dest: '.',
         },
+        {
+          src: 'proxy.js',
+          dest: '.',
+        },
+        {
+          src: '.env.example',
+          dest: '.',
+        },
+        {
+          src: 'start-proxy-windows.cmd',
+          dest: '.',
+        },
+        {
+          src: 'start-proxy-macos.command',
+          dest: '.',
+        },
+        {
+          src: 'start-proxy-linux.sh',
+          dest: '.',
+        },
       ],
     }),
   ],

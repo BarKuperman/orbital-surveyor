@@ -93,7 +93,7 @@ jobs:
               'g',
             );
             const body = (notes.data.body || '')
-              .replace(pullUrlPattern, '#$1')
+              .replace(pullUrlPattern, (fullUrl, prNumber) => `[#${prNumber}](${fullUrl})`)
               .replace(compareUrlPattern, (fullUrl, range) => `[${range}](${fullUrl})`);
 
             fs.writeFileSync('release-notes.md', body);

@@ -383,7 +383,7 @@ function ProviderSelect({
         onChange={(event: { target: { value: string } }) => onChange(event.target.value)}
       >
         {options.map((provider) => (
-          <option key={provider.id} value={provider.id}>
+          <option key={provider.id} value={provider.id} label={provider.label}>
             {provider.label}
           </option>
         ))}

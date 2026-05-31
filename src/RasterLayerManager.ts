@@ -21,6 +21,7 @@ type MapLike = {
   setTerrain?: (terrain: { source: string; exaggeration?: number } | null) => void;
   getTerrain?: () => { source: string; exaggeration?: number } | null;
   getCanvas?: () => { style: { cursor: string } };
+  getContainer?: () => HTMLElement;
 };
 
 const SATELLITE_SOURCE_ID = `${MOD_ID}:satellite-source`;
@@ -93,6 +94,9 @@ export class RasterLayerManager {
   private filteredGameLayers = new Set<string>();
   private streetViewClickHandler: ((event?: unknown) => void) | null = null;
   private previousCanvasCursor: string | null = null;
+  private attributionElement: HTMLElement | null = null;
+  private attributionContainer: HTMLElement | null = null;
+  private previousAttributionContainerPosition: string | null = null;
 
   setMap(map: MapLike): void {
     if (this.map === map) return;
@@ -100,12 +104,14 @@ export class RasterLayerManager {
     this.map = map;
     this.patchSetStyle();
     this.attachHandlers();
+    this.ensureAttributionElement();
     this.updateStreetViewClickHandler();
     this.ensureLayers();
   }
 
   setSettings(settings: SurveyorSettings): void {
     this.settings = { ...settings };
+    this.updateAttributionElement();
     this.updateStreetViewClickHandler();
     this.ensureLayers();
   }
@@ -119,11 +125,13 @@ export class RasterLayerManager {
     this.removeLayer(STREET_VIEW_LAYER_ID, STREET_VIEW_SOURCE_ID);
     this.removeLayer(SATELLITE_LAYER_ID, SATELLITE_SOURCE_ID);
     this.lastSourceKeys.clear();
+    this.updateAttributionElement();
   }
 
   destroy(): void {
     this.detachHandlers();
     this.reset();
+    this.removeAttributionElement();
     this.restoreSetStyle();
     this.map = null;
   }
@@ -156,6 +164,7 @@ export class RasterLayerManager {
       this.dataHandler = null;
     }
     this.removeStreetViewClickHandler();
+    this.removeAttributionElement();
     this.clearScheduledEnsure();
     this.restoreSetStyle();
   }
@@ -174,7 +183,7 @@ export class RasterLayerManager {
       layerName: 'satellite',
       opacity: 1,
       visible: this.settings.satelliteEnabled,
-      attribution: 'Imagery © Google',
+      attribution: this.resolveRasterAttribution(this.settings.satelliteProvider),
     });
 
     this.ensureRasterLayer({
@@ -184,7 +193,7 @@ export class RasterLayerManager {
       layerName: 'streetview',
       opacity: 1,
       visible: this.settings.streetViewEnabled,
-      attribution: 'Street View © Google',
+      attribution: this.resolveRasterAttribution('streetview'),
     });
 
     this.ensureTerrain({
@@ -195,6 +204,7 @@ export class RasterLayerManager {
     });
 
     this.applyCityLayerVisibility();
+    this.updateAttributionElement();
     this.reorderLayers();
   }
 
@@ -721,6 +731,72 @@ export class RasterLayerManager {
     if (this.warnedKeys.has(key)) return;
     this.warnedKeys.add(key);
     console.warn(message, error);
+  }
+
+  private resolveActiveAttributions(): string[] {
+    if (!this.settings) return [];
+    const attributions = new Set<string>();
+
+    if (this.settings.satelliteEnabled) {
+      attributions.add(this.resolveRasterAttribution(this.settings.satelliteProvider));
+    }
+    if (this.settings.streetViewEnabled) {
+      attributions.add(this.resolveRasterAttribution('streetview'));
+    }
+    if (this.settings.terrainEnabled) {
+      attributions.add(this.resolveTerrainSourceProfile(this.settings.terrainProvider).attribution);
+    }
+
+    return [...attributions];
+  }
+
+  private ensureAttributionElement(): void {
+    if (this.attributionElement) return;
+    const container = this.map?.getContainer?.();
+    if (!container) return;
+
+    if (window.getComputedStyle(container).position === 'static') {
+      this.previousAttributionContainerPosition = container.style.position;
+      container.style.position = 'relative';
+    }
+
+    const element = document.createElement('div');
+    element.className = 'os-attribution';
+    container.appendChild(element);
+    this.attributionElement = element;
+    this.attributionContainer = container;
+    this.updateAttributionElement();
+  }
+
+  private updateAttributionElement(): void {
+    this.ensureAttributionElement();
+    if (!this.attributionElement) return;
+
+    const attributions = this.resolveActiveAttributions();
+    this.attributionElement.textContent = attributions.join(' | ');
+    this.attributionElement.toggleAttribute('data-visible', attributions.length > 0);
+  }
+
+  private removeAttributionElement(): void {
+    this.attributionElement?.remove();
+    this.attributionElement = null;
+    if (
+      this.attributionContainer &&
+      this.previousAttributionContainerPosition !== null
+    ) {
+      this.attributionContainer.style.position = this.previousAttributionContainerPosition;
+    }
+    this.attributionContainer = null;
+    this.previousAttributionContainerPosition = null;
+  }
+
+  private resolveRasterAttribution(providerId: string): string {
+    if (providerId === 'esri') return 'Tiles © Esri';
+    if (providerId === 'osm') return '© OpenStreetMap contributors';
+    if (providerId === 'maptiler') return 'Tiles © MapTiler © OpenStreetMap contributors';
+    if (providerId === 'streetview') return 'Street View © Google';
+    if (providerId === 'custom') return 'Custom tiles';
+    return 'Tiles © Google';
   }
 
   private resolveTerrainSourceProfile(providerId: string): TerrainSourceProfile {

@@ -1,26 +1,12 @@
 # Orbital Surveyor
 
-Subway Builder mod that adds satellite imagery and real 3D terrain to the in-game MapLibre map. The game requests only a local proxy; the proxy fetches provider tiles and keeps API keys out of the mod bundle.
+Subway Builder mod that adds satellite imagery, streetview and 3D terrain to the in-game MapLibre map.
 
 ## User Guide
 
 1. Install [Node.js](https://nodejs.org/) if it is not already installed.
-2. Put the mod files in your Subway Builder mods folder.
-3. Create a file named `.env` next to `proxy.js`.
-4. Add your MapTiler key:
-
-   ```text
-   MAPTILER_API_KEY=your_maptiler_key_here
-   PROXY_PORT=8787
-   ```
-
-5. Optional: add a Google Maps key if you want Google satellite as an alternate provider:
-
-   ```text
-   GOOGLE_MAPS_API_KEY=your_google_maps_key_here
-   ```
-
-6. Start the proxy before opening or reloading the mod by double-clicking the launcher for your OS:
+2. If installed not through Railyard, put the mod files in your Subway Builder mods folder.
+3. Start the proxy before opening or reloading the mod by double-clicking the launcher for your OS in the mod folder:
 
    - Windows: `start-proxy-windows.cmd`
    - macOS: `start-proxy-macos.command`
@@ -28,9 +14,26 @@ Subway Builder mod that adds satellite imagery and real 3D terrain to the in-gam
 
    You can also run `node proxy.js` manually from a terminal.
 
-7. Leave the proxy window open while playing.
-8. Enable Orbital Surveyor in Subway Builder under Settings > Mods.
-9. Open the Orbital Surveyor panel in-game and enable Satellite, Terrain, or Street View as needed.
+4. Leave the proxy window open while playing.
+5. Enable Orbital Surveyor in Subway Builder under Settings > Mods.
+6. Open the Orbital Surveyor panel in-game and enable Satellite, Terrain, or Street View as needed.
+
+## Optional Setup
+
+Create a file named `.env` next to `proxy.js` if you want provider API keys, custom tile URLs, or a custom proxy port. You can copy or rename `.env.example` to `.env` and edit the values.
+
+Add a MapTiler key if you want MapTiler imagery or terrain:
+
+   ```text
+   MAPTILER_API_KEY=your_maptiler_key_here
+   PROXY_PORT=8787
+   ```
+
+Add a Google Maps key if you want the Google Map Tiles API provider:
+
+   ```text
+   GOOGLE_MAPS_API_KEY=your_google_maps_key_here
+   ```
 
 ## Map Layer Filtering
 
@@ -74,7 +77,7 @@ Street View availability is available without a Google Maps API key through:
 
 - `GET /tiles/streetview/availability/:z/:x/:y`
 
-Provider API keys are read only by `proxy.js` from environment variables or `.env`.
+Provider API keys are read only by `proxy.js` from environment variables or `.env`. The default satellite provider and default terrain provider do not require API keys.
 
 ## Mod Development
 
@@ -100,9 +103,14 @@ node --check proxy.js
 
 Built-in provider IDs:
 
-- `maptiler`: Default satellite provider through the `satellite-v4` map, and `terrain-rgb-v2` DEM tiles for actual MapLibre 3D terrain.
-- `mapterhorn`: Optional open terrain provider using Terrarium-encoded WebP DEM tiles from `https://tiles.mapterhorn.com/{z}/{x}/{y}.webp`.
-- `google`: Optional Google Map Tiles API satellite tiles.
+- `google-sat`: Default Google satellite raster tiles through the local proxy. No API key required.
+- `google-hybrid`: Google hybrid raster tiles through the local proxy. No API key required.
+- `google-road`: Google road raster tiles through the local proxy. No API key required.
+- `esri`: Esri World Imagery raster tiles through the local proxy. No API key required.
+- `osm`: OpenStreetMap raster tiles through the local proxy from `https://tile.openstreetmap.org/${z}/${x}/${y}.png`.
+- `mapterhorn`: Default open terrain provider using Terrarium-encoded WebP DEM tiles from `https://tiles.mapterhorn.com/{z}/{x}/{y}.webp`.
+- `maptiler`: Optional MapTiler provider requiring `MAPTILER_API_KEY`; uses `satellite-v4` for imagery and `terrain-rgb-v2` DEM tiles for MapLibre 3D terrain.
+- `google`: Optional Google Map Tiles API satellite tiles requiring `GOOGLE_MAPS_API_KEY`.
 - `streetview`: Google Street View availability overlay through the local proxy.
 - `custom`: Optional XYZ templates from `CUSTOM_SATELLITE_URL` and `CUSTOM_TERRAIN_URL`.
 

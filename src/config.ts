@@ -47,13 +47,38 @@ export const DEFAULT_CITY_LAYERS = CITY_LAYER_GROUPS.reduce((visibility, group) 
 
 export const PROVIDERS: ProviderOption[] = [
   {
+    id: 'google-sat',
+    label: 'Google Satellite',
+    layers: ['satellite'],
+  },
+  {
+    id: 'google-hybrid',
+    label: 'Google Hybrid',
+    layers: ['satellite'],
+  },
+  {
+    id: 'google-road',
+    label: 'Google Roads',
+    layers: ['satellite'],
+  },
+  {
+    id: 'esri',
+    label: 'Esri World Imagery',
+    layers: ['satellite'],
+  },
+  {
+    id: 'osm',
+    label: 'OpenStreetMap',
+    layers: ['satellite'],
+  },
+  {
     id: 'google',
-    label: 'Google Map Tiles',
+    label: 'Google Map Tiles (API key)',
     layers: ['satellite'],
   },
   {
     id: 'maptiler',
-    label: 'MapTiler',
+    label: 'MapTiler (API key)',
     layers: ['satellite', 'terrain'],
   },
   {
@@ -73,8 +98,8 @@ export const DEFAULT_SETTINGS: SurveyorSettings = {
   satelliteEnabled: false,
   terrainEnabled: false,
   streetViewEnabled: false,
-  satelliteProvider: 'maptiler',
-  terrainProvider: 'maptiler',
+  satelliteProvider: 'google-sat',
+  terrainProvider: 'mapterhorn',
   terrainExaggeration: 1.4,
   cityLayers: { ...DEFAULT_CITY_LAYERS },
 };
@@ -96,7 +121,7 @@ export function mergeSettings(value: unknown): SurveyorSettings {
     terrainEnabled: normalizeBoolean(input.terrainEnabled, DEFAULT_SETTINGS.terrainEnabled),
     streetViewEnabled: normalizeBoolean(input.streetViewEnabled, DEFAULT_SETTINGS.streetViewEnabled),
     satelliteProvider: normalizeSatelliteProvider(input.satelliteProvider, input),
-    terrainProvider: input.terrainProvider || DEFAULT_SETTINGS.terrainProvider,
+    terrainProvider: normalizeProvider(input.terrainProvider, 'terrain', DEFAULT_SETTINGS.terrainProvider),
     terrainExaggeration: normalizeExaggeration(
       input.terrainExaggeration ?? input.terrainOpacity,
       DEFAULT_SETTINGS.terrainExaggeration,
@@ -117,7 +142,16 @@ function normalizeSatelliteProvider(
     input.proxyBaseUrl === DEFAULT_SETTINGS.proxyBaseUrl &&
     input.satelliteOpacity === 1;
 
-  return looksLikeOldDefault ? DEFAULT_SETTINGS.satelliteProvider : value;
+  return looksLikeOldDefault
+    ? DEFAULT_SETTINGS.satelliteProvider
+    : normalizeProvider(value, 'satellite', DEFAULT_SETTINGS.satelliteProvider);
+}
+
+function normalizeProvider(value: unknown, layer: ProviderLayer, fallback: string): string {
+  if (typeof value !== 'string' || !value) return fallback;
+  return PROVIDERS.some((provider) => provider.id === value && provider.layers.includes(layer))
+    ? value
+    : fallback;
 }
 
 type LegacySettings = {

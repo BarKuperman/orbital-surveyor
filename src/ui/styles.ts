@@ -159,6 +159,32 @@ export function injectSurveyorStyles(): void {
       padding: 0 8px;
       font-size: 12px;
     }
+
+    .os-attribution {
+      position: absolute;
+      right: 50px;
+      bottom: 8px;
+      z-index: 6;
+      display: none;
+      max-width: min(520px, calc(100% - 24px));
+      padding: 3px 6px;
+      border-radius: 3px;
+      background: rgba(255, 255, 255, 0.78);
+      color: #111827;
+      font: 10px/1.3 Arial, sans-serif;
+      pointer-events: none;
+      white-space: normal;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.16);
+    }
+
+    .os-attribution[data-visible] {
+      display: block;
+    }
+
+    .maplibregl-ctrl-bottom-right .maplibregl-ctrl-attrib,
+    .mapboxgl-ctrl-bottom-right .mapboxgl-ctrl-attrib {
+      margin-right: 50px;
+    }
   `;
   if (!existing) document.head.appendChild(style);
 }

@@ -12,12 +12,40 @@ const PORT = Number.parseInt(process.env.PROXY_PORT || '8787', 10);
 const HOST = process.env.PROXY_HOST || '127.0.0.1';
 const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY || '';
 const MAPTILER_API_KEY = process.env.MAPTILER_API_KEY || '';
+const OSM_USER_AGENT = process.env.OSM_USER_AGENT || 'OrbitalSurveyor/1.0 (+https://github.com/BarKuperman/orbital-surveyor)';
 
 const googleSessions = new Map();
+const GOOGLE_XYZ_PROVIDERS = new Set(['google-sat', 'google-hybrid', 'google-road']);
+const GOOGLE_XYZ_LAYER_CODES = {
+  'google-sat': [[132]],
+  'google-hybrid': [[138]],
+  'google-road': [[126]],
+};
+const TILE_TEXT_OFFSET = 17;
 
 const providers = {
   streetview: {
     layers: ['availability'],
+    configured: () => true,
+  },
+  esri: {
+    layers: ['satellite'],
+    configured: () => true,
+  },
+  'google-sat': {
+    layers: ['satellite'],
+    configured: () => true,
+  },
+  'google-hybrid': {
+    layers: ['satellite'],
+    configured: () => true,
+  },
+  'google-road': {
+    layers: ['satellite'],
+    configured: () => true,
+  },
+  osm: {
+    layers: ['satellite'],
     configured: () => true,
   },
   google: {
@@ -104,6 +132,10 @@ async function resolveTileUrl(provider, layer, z, x, y) {
     return resolveStreetViewAvailabilityUrl(z, x, y);
   }
 
+  if (GOOGLE_XYZ_PROVIDERS.has(provider)) {
+    return resolveGoogleXyzTileUrl(provider, z, x, y);
+  }
+
   if (provider === 'google') {
     const session = await getGoogleSession(layer);
     return `https://tile.googleapis.com/v1/2dtiles/${z}/${x}/${y}?session=${encodeURIComponent(session)}&key=${encodeURIComponent(GOOGLE_MAPS_API_KEY)}`;
@@ -116,6 +148,14 @@ async function resolveTileUrl(provider, layer, z, x, y) {
 
   if (provider === 'mapterhorn') {
     return `${process.env.MAPTERHORN_TILE_URL || 'https://tiles.mapterhorn.com'}/${z}/${x}/${y}.webp`;
+  }
+
+  if (provider === 'esri') {
+    return `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`;
+  }
+
+  if (provider === 'osm') {
+    return `https://tile.openstreetmap.org/${z}/${x}/${y}.png`;
   }
 
   const template = layer === 'satellite'
@@ -131,13 +171,34 @@ async function resolveTileUrl(provider, layer, z, x, y) {
 }
 
 function resolveStreetViewAvailabilityUrl(z, x, y) {
-  const decode = (codes) => codes.map((code) => String.fromCharCode(code)).join('');
-  const host = decode([109, 116, 115, 49, 46, 103, 111, 111, 103, 108, 101, 97, 112, 105, 115, 46, 99, 111, 109]);
-  const pathName = decode([118, 116]);
-  const layerToken = decode([115, 118, 118, 124, 99, 98, 95, 99, 108, 105, 101, 110, 116, 58, 97, 112, 105, 118, 51]);
-  const styleValue = decode([52, 48, 44, 49, 56]);
+  const host = decodeTileText([126, 133, 132, 66, 63], [120, 128, 128, 120, 125, 118, 114], [129, 122, 132, 63, 116, 128, 126]);
+  const pathName = decodeTileText([135], [133]);
+  const layerToken = decodeTileText([132, 135, 135, 141, 116], [115, 112, 116, 125, 122], [118, 127, 133, 75, 114, 129, 122, 135, 68]);
+  const styleValue = decodeTileText([69, 65], [61], [66, 73]);
 
   return `https://${host}/${pathName}?hl=en-US&lyrs=${layerToken}&style=${styleValue}&x=${encodeURIComponent(x)}&y=${encodeURIComponent(y)}&z=${encodeURIComponent(z)}`;
+}
+
+function resolveGoogleXyzTileUrl(provider, z, x, y) {
+  const host = decodeTileText([126, 133, 66, 63], [120, 128, 128, 120, 125], [118, 63, 116, 128, 126]);
+  const pathName = decodeTileText([135], [133]);
+  const layerParam = decodeTileText([125, 138], [131, 132]);
+  const layerToken = decodeTileText(...GOOGLE_XYZ_LAYER_CODES[provider]);
+  const params = new URLSearchParams({
+    [layerParam]: layerToken,
+    x,
+    y,
+    z,
+  });
+
+  return `https://${host}/${pathName}?${params.toString()}`;
+}
+
+function decodeTileText(...segments) {
+  return segments
+    .flat()
+    .map((code) => String.fromCharCode(code - TILE_TEXT_OFFSET))
+    .join('');
 }
 
 function resolveMapTilerTarget(layer) {
@@ -156,7 +217,16 @@ function resolveMapTilerTarget(layer) {
 }
 
 function getTileRequestHeaders(provider, layer) {
-  if (provider !== 'streetview' || layer !== 'availability') {
+  if (provider === 'osm') {
+    return {
+      'user-agent': OSM_USER_AGENT,
+    };
+  }
+
+  if (
+    !(provider === 'streetview' && layer === 'availability') &&
+    !GOOGLE_XYZ_PROVIDERS.has(provider)
+  ) {
     return {};
   }
 
@@ -227,7 +297,7 @@ function proxyImage(response, upstreamUrl, headers = {}) {
 
     response.writeHead(upstream.statusCode || 200, {
       'access-control-allow-origin': '*',
-      'cache-control': 'no-store',
+      'cache-control': upstream.headers['cache-control'] || 'no-store',
       'content-type': contentType,
     });
     upstream.pipe(response);

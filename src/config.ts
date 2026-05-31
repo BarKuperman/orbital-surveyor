@@ -1,6 +1,8 @@
-export const MOD_ID = 'com.orbital-surveyor.overlays';
-export const MOD_NAME = 'Orbital Surveyor';
-export const MOD_VERSION = '1.0.0';
+import manifest from '../manifest.json';
+
+export const MOD_ID = manifest.id;
+export const MOD_NAME = manifest.name;
+export const MOD_VERSION = manifest.version;
 export const TAG = '[OrbitalSurveyor]';
 
 export type ProviderLayer = 'satellite' | 'terrain';

@@ -13,11 +13,12 @@ const HOST = process.env.PROXY_HOST || '127.0.0.1';
 const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY || '';
 const MAPTILER_API_KEY = process.env.MAPTILER_API_KEY || '';
 const OSM_USER_AGENT = process.env.OSM_USER_AGENT || 'OrbitalSurveyor/1.0 (+https://github.com/BarKuperman/orbital-surveyor)';
+const UPSTREAM_REQUEST_TIMEOUT_MS = 30000;
 const proxyAgent = new https.Agent({
   keepAlive: true,
   maxSockets: 64,
   maxFreeSockets: 16,
-  timeout: 30000,
+  timeout: UPSTREAM_REQUEST_TIMEOUT_MS,
 });
 
 const googleSessions = new Map();
@@ -178,15 +179,7 @@ function resolveStreetViewAvailabilityUrl(z, x, y) {
 }
 
 function resolveGoogleXyzTileUrl(provider, z, x, y) {
-  const layerToken = GOOGLE_XYZ_TILE.layerTokens[provider];
-  const params = new URLSearchParams({
-    [GOOGLE_XYZ_TILE.layerParam]: layerToken,
-    x,
-    y,
-    z,
-  });
-
-  return `https://${GOOGLE_XYZ_TILE.host}/${GOOGLE_XYZ_TILE.pathName}?${params.toString()}`;
+  return `https://${GOOGLE_XYZ_TILE.host}/${GOOGLE_XYZ_TILE.pathName}?${GOOGLE_XYZ_TILE.layerQueries[provider]}&x=${x}&y=${y}&z=${z}`;
 }
 
 function decodeTileText(...segments) {
@@ -211,16 +204,16 @@ function buildGoogleXyzTileConfig() {
     'google-hybrid': [[138]],
     'google-road': [[126]],
   };
+  const layerParam = decodeTileText([125, 138], [131, 132]);
 
   return {
     host: decodeTileText([126, 133, 66, 63], [120, 128, 128, 120, 125], [118, 63, 116, 128, 126]),
     pathName: decodeTileText([135], [133]),
-    layerParam: decodeTileText([125, 138], [131, 132]),
-    layerTokens: Object.fromEntries(
-      Object.entries(layerCodes).map(([provider, segments]) => [
-        provider,
-        decodeTileText(...segments),
-      ]),
+    layerQueries: Object.fromEntries(
+      Object.entries(layerCodes).map(([provider, segments]) => {
+        const layerToken = decodeTileText(...segments);
+        return [provider, `${layerParam}=${encodeURIComponent(layerToken)}`];
+      }),
     ),
   };
 }
@@ -300,7 +293,13 @@ async function getGoogleSession(layer) {
 }
 
 function proxyImage(response, upstreamUrl, headers = {}) {
-  https.get(upstreamUrl, { agent: proxyAgent, headers }, (upstream) => {
+  let upstreamResponse = null;
+  const upstreamRequest = https.get(upstreamUrl, { agent: proxyAgent, headers }, (upstream) => {
+    upstreamResponse = upstream;
+    upstream.on('error', (error) => {
+      sendUpstreamFailure(response, error);
+    });
+
     const contentType = upstream.headers['content-type'] || 'application/octet-stream';
 
     if ((upstream.statusCode || 500) >= 400) {
@@ -325,9 +324,34 @@ function proxyImage(response, upstreamUrl, headers = {}) {
       'content-type': contentType,
     });
     upstream.pipe(response);
-  }).on('error', (error) => {
-    sendJson(response, 502, { error: 'upstream_request_failed', message: error.message });
   });
+
+  response.on('close', () => {
+    if (response.writableEnded) return;
+    upstreamRequest.destroy();
+    upstreamResponse?.destroy();
+  });
+
+  upstreamRequest.setTimeout(UPSTREAM_REQUEST_TIMEOUT_MS, () => {
+    const error = new Error(`Upstream request timed out after ${UPSTREAM_REQUEST_TIMEOUT_MS}ms`);
+    error.code = 'ETIMEDOUT';
+    upstreamRequest.destroy(error);
+  });
+
+  upstreamRequest.on('error', (error) => {
+    sendUpstreamFailure(response, error);
+  });
+}
+
+function sendUpstreamFailure(response, error) {
+  if (response.destroyed || response.writableEnded) return;
+  if (response.headersSent) {
+    response.destroy(error);
+    return;
+  }
+
+  const statusCode = error.code === 'ETIMEDOUT' ? 504 : 502;
+  sendJson(response, statusCode, { error: 'upstream_request_failed', message: error.message });
 }
 
 function requestJson({ method, url, headers, body }) {
@@ -360,6 +384,11 @@ function requestJson({ method, url, headers, body }) {
         });
       },
     );
+    request.setTimeout(UPSTREAM_REQUEST_TIMEOUT_MS, () => {
+      const error = new Error(`Upstream request timed out after ${UPSTREAM_REQUEST_TIMEOUT_MS}ms`);
+      error.code = 'ETIMEDOUT';
+      request.destroy(error);
+    });
     request.on('error', reject);
     request.write(body);
     request.end();

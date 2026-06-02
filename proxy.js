@@ -5,7 +5,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const CURRENT_LOG_PATH = path.join(__dirname, 'proxy-current.log');
+const PREVIOUS_LOG_PATH = path.join(__dirname, 'proxy-previous.log');
 
+rotateProxyLogs();
+const proxyLogStream = createProxyLogStream();
+registerCriticalErrorHandlers();
 loadDotEnv(path.join(__dirname, '.env'));
 
 const PORT = Number.parseInt(process.env.PROXY_PORT || '8787', 10);
@@ -72,13 +77,28 @@ const providers = {
 
 const server = http.createServer((request, response) => {
   void handleRequest(request, response).catch((error) => {
-    console.error('[proxy] Unhandled request error:', error);
+    logCriticalError('Unhandled request error', error, {
+      method: request.method,
+      path: getRequestPath(request),
+    });
+    if (response.headersSent || response.destroyed) {
+      response.destroy(error);
+      return;
+    }
     sendJson(response, 500, { error: 'proxy_error', message: String(error?.message || error) });
   });
 });
 
+server.on('error', (error) => {
+  const fatal = !server.listening;
+  logCriticalError('Proxy server error', error, { host: HOST, port: PORT }, { sync: fatal });
+  if (fatal) {
+    process.exit(1);
+  }
+});
+
 server.listen(PORT, HOST, () => {
-  console.log(`[proxy] Orbital Surveyor proxy listening at http://${HOST}:${PORT}`);
+  logProxyInfo(`[${new Date().toISOString()}] [proxy] Orbital Surveyor proxy listening at http://${HOST}:${PORT}`);
   console.log('[proxy] Press Ctrl+C to stop.');
 });
 
@@ -430,6 +450,98 @@ function sendJson(response, statusCode, payload) {
     'cache-control': 'no-store',
   });
   response.end(JSON.stringify(payload));
+}
+
+function rotateProxyLogs() {
+  try {
+    if (fs.existsSync(PREVIOUS_LOG_PATH)) {
+      fs.unlinkSync(PREVIOUS_LOG_PATH);
+    }
+    if (fs.existsSync(CURRENT_LOG_PATH)) {
+      fs.renameSync(CURRENT_LOG_PATH, PREVIOUS_LOG_PATH);
+    }
+  } catch (error) {
+    console.error('[proxy] Failed to rotate proxy log:', error);
+  }
+}
+
+function createProxyLogStream() {
+  const stream = fs.createWriteStream(CURRENT_LOG_PATH, { flags: 'a' });
+  stream.on('error', (error) => {
+    console.error('[proxy] Failed to write proxy log:', error);
+  });
+  return stream;
+}
+
+function registerCriticalErrorHandlers() {
+  process.on('uncaughtException', (error) => {
+    logCriticalError('Uncaught exception', error, undefined, { sync: true });
+    process.exit(1);
+  });
+
+  process.on('unhandledRejection', (reason) => {
+    logCriticalError('Unhandled promise rejection', reason);
+  });
+}
+
+function logCriticalError(message, error, context = undefined, options = {}) {
+  const lines = [
+    `[${new Date().toISOString()}] ERROR ${message}`,
+    context ? `Context: ${safeJson(context)}` : null,
+    formatError(error),
+  ].filter(Boolean);
+  const entry = `${lines.join('\n')}\n\n`;
+
+  try {
+    if (options.sync) {
+      fs.appendFileSync(CURRENT_LOG_PATH, entry, 'utf8');
+      console.error(entry.trimEnd());
+      return;
+    }
+    proxyLogStream.write(entry);
+    console.error(entry.trimEnd());
+  } catch (logError) {
+    console.error('[proxy] Failed to write proxy log:', logError);
+  }
+}
+
+function logProxyInfo(message) {
+  const entry = `${message}\n`;
+  proxyLogStream.write(entry);
+  console.log(message);
+}
+
+function formatError(error) {
+  if (error instanceof Error) {
+    const details = {
+      name: error.name,
+      message: error.message,
+      code: error.code,
+      cause: error.cause,
+    };
+    return [
+      `Error: ${safeJson(details)}`,
+      error.stack ? `Stack:\n${error.stack}` : null,
+    ].filter(Boolean).join('\n');
+  }
+
+  return `Error: ${safeJson(error)}`;
+}
+
+function safeJson(value) {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function getRequestPath(request) {
+  try {
+    return new URL(request.url || '/', `http://${request.headers.host || `${HOST}:${PORT}`}`).pathname;
+  } catch {
+    return request.url || '/';
+  }
 }
 
 function loadDotEnv(filePath) {

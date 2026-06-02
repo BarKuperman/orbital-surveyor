@@ -13,15 +13,18 @@ const HOST = process.env.PROXY_HOST || '127.0.0.1';
 const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY || '';
 const MAPTILER_API_KEY = process.env.MAPTILER_API_KEY || '';
 const OSM_USER_AGENT = process.env.OSM_USER_AGENT || 'OrbitalSurveyor/1.0 (+https://github.com/BarKuperman/orbital-surveyor)';
+const proxyAgent = new https.Agent({
+  keepAlive: true,
+  maxSockets: 64,
+  maxFreeSockets: 16,
+  timeout: 30000,
+});
 
 const googleSessions = new Map();
 const GOOGLE_XYZ_PROVIDERS = new Set(['google-sat', 'google-hybrid', 'google-road']);
-const GOOGLE_XYZ_LAYER_CODES = {
-  'google-sat': [[132]],
-  'google-hybrid': [[138]],
-  'google-road': [[126]],
-};
 const TILE_TEXT_OFFSET = 17;
+const STREET_VIEW_AVAILABILITY_TILE = buildStreetViewAvailabilityTileConfig();
+const GOOGLE_XYZ_TILE = buildGoogleXyzTileConfig();
 
 const providers = {
   streetview: {
@@ -171,27 +174,19 @@ async function resolveTileUrl(provider, layer, z, x, y) {
 }
 
 function resolveStreetViewAvailabilityUrl(z, x, y) {
-  const host = decodeTileText([126, 133, 132, 66, 63], [120, 128, 128, 120, 125, 118, 114], [129, 122, 132, 63, 116, 128, 126]);
-  const pathName = decodeTileText([135], [133]);
-  const layerToken = decodeTileText([132, 135, 135, 141, 116], [115, 112, 116, 125, 122], [118, 127, 133, 75, 114, 129, 122, 135, 68]);
-  const styleValue = decodeTileText([69, 65], [61], [66, 73]);
-
-  return `https://${host}/${pathName}?hl=en-US&lyrs=${layerToken}&style=${styleValue}&x=${encodeURIComponent(x)}&y=${encodeURIComponent(y)}&z=${encodeURIComponent(z)}`;
+  return `https://${STREET_VIEW_AVAILABILITY_TILE.host}/${STREET_VIEW_AVAILABILITY_TILE.pathName}?hl=en-US&lyrs=${STREET_VIEW_AVAILABILITY_TILE.layerToken}&style=${STREET_VIEW_AVAILABILITY_TILE.styleValue}&x=${encodeURIComponent(x)}&y=${encodeURIComponent(y)}&z=${encodeURIComponent(z)}`;
 }
 
 function resolveGoogleXyzTileUrl(provider, z, x, y) {
-  const host = decodeTileText([126, 133, 66, 63], [120, 128, 128, 120, 125], [118, 63, 116, 128, 126]);
-  const pathName = decodeTileText([135], [133]);
-  const layerParam = decodeTileText([125, 138], [131, 132]);
-  const layerToken = decodeTileText(...GOOGLE_XYZ_LAYER_CODES[provider]);
+  const layerToken = GOOGLE_XYZ_TILE.layerTokens[provider];
   const params = new URLSearchParams({
-    [layerParam]: layerToken,
+    [GOOGLE_XYZ_TILE.layerParam]: layerToken,
     x,
     y,
     z,
   });
 
-  return `https://${host}/${pathName}?${params.toString()}`;
+  return `https://${GOOGLE_XYZ_TILE.host}/${GOOGLE_XYZ_TILE.pathName}?${params.toString()}`;
 }
 
 function decodeTileText(...segments) {
@@ -199,6 +194,35 @@ function decodeTileText(...segments) {
     .flat()
     .map((code) => String.fromCharCode(code - TILE_TEXT_OFFSET))
     .join('');
+}
+
+function buildStreetViewAvailabilityTileConfig() {
+  return {
+    host: decodeTileText([126, 133, 132, 66, 63], [120, 128, 128, 120, 125, 118, 114], [129, 122, 132, 63, 116, 128, 126]),
+    pathName: decodeTileText([135], [133]),
+    layerToken: decodeTileText([132, 135, 135, 141, 116], [115, 112, 116, 125, 122], [118, 127, 133, 75, 114, 129, 122, 135, 68]),
+    styleValue: decodeTileText([69, 65], [61], [66, 73]),
+  };
+}
+
+function buildGoogleXyzTileConfig() {
+  const layerCodes = {
+    'google-sat': [[132]],
+    'google-hybrid': [[138]],
+    'google-road': [[126]],
+  };
+
+  return {
+    host: decodeTileText([126, 133, 66, 63], [120, 128, 128, 120, 125], [118, 63, 116, 128, 126]),
+    pathName: decodeTileText([135], [133]),
+    layerParam: decodeTileText([125, 138], [131, 132]),
+    layerTokens: Object.fromEntries(
+      Object.entries(layerCodes).map(([provider, segments]) => [
+        provider,
+        decodeTileText(...segments),
+      ]),
+    ),
+  };
 }
 
 function resolveMapTilerTarget(layer) {
@@ -276,7 +300,7 @@ async function getGoogleSession(layer) {
 }
 
 function proxyImage(response, upstreamUrl, headers = {}) {
-  https.get(upstreamUrl, { headers }, (upstream) => {
+  https.get(upstreamUrl, { agent: proxyAgent, headers }, (upstream) => {
     const contentType = upstream.headers['content-type'] || 'application/octet-stream';
 
     if ((upstream.statusCode || 500) >= 400) {
@@ -314,6 +338,7 @@ function requestJson({ method, url, headers, body }) {
         method,
         hostname: parsedUrl.hostname,
         path: `${parsedUrl.pathname}${parsedUrl.search}`,
+        agent: proxyAgent,
         headers,
       },
       (response) => {

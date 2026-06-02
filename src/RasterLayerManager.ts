@@ -86,8 +86,11 @@ export class RasterLayerManager {
   private styleHandler: (() => void) | null = null;
   private styleLoadingHandler: (() => void) | null = null;
   private dataHandler: (() => void) | null = null;
+  private errorHandler: ((event?: unknown) => void) | null = null;
   private lastSourceKeys = new Map<string, string>();
   private ensureTimer: number | null = null;
+  private proxyFailureTimer: number | null = null;
+  private proxyFailureHandler: (() => void) | null = null;
   private patchedMap: MapLike | null = null;
   private originalSetStyle: MapLike['setStyle'] | null = null;
   private warnedKeys = new Set<string>();
@@ -114,6 +117,10 @@ export class RasterLayerManager {
     this.updateAttributionElement();
     this.updateStreetViewClickHandler();
     this.ensureLayers();
+  }
+
+  setProxyFailureHandler(handler: (() => void) | null): void {
+    this.proxyFailureHandler = handler;
   }
 
   reset(): void {
@@ -144,9 +151,11 @@ export class RasterLayerManager {
       this.applyCityLayerVisibility();
       this.reorderLayers();
     };
+    this.errorHandler = (event?: unknown) => this.onMapError(event);
     this.map.on('styledata', this.styleHandler);
     this.map.on('styledataloading', this.styleLoadingHandler);
     this.map.on('data', this.dataHandler);
+    this.map.on('error', this.errorHandler);
   }
 
   private detachHandlers(): void {
@@ -163,14 +172,20 @@ export class RasterLayerManager {
       this.map.off('data', this.dataHandler);
       this.dataHandler = null;
     }
+    if (this.errorHandler) {
+      this.map.off('error', this.errorHandler);
+      this.errorHandler = null;
+    }
     this.removeStreetViewClickHandler();
     this.removeAttributionElement();
     this.clearScheduledEnsure();
+    this.clearScheduledProxyFailure();
     this.restoreSetStyle();
   }
 
   private ensureLayers(): void {
     if (!this.map || !this.settings) return;
+    this.removeInactiveProxyLayers();
     if (!this.isStyleReady()) {
       this.scheduleEnsureLayers();
       return;
@@ -208,8 +223,31 @@ export class RasterLayerManager {
     this.reorderLayers();
   }
 
+  private removeInactiveProxyLayers(): void {
+    if (!this.settings) return;
+    if (!this.settings.satelliteEnabled) {
+      this.removeLayer(SATELLITE_LAYER_ID, SATELLITE_SOURCE_ID);
+      this.lastSourceKeys.delete(SATELLITE_SOURCE_ID);
+    }
+    if (!this.settings.streetViewEnabled) {
+      this.removeLayer(STREET_VIEW_LAYER_ID, STREET_VIEW_SOURCE_ID);
+      this.lastSourceKeys.delete(STREET_VIEW_SOURCE_ID);
+    }
+    if (!this.settings.terrainEnabled) {
+      this.disableTerrain();
+      this.removeSource(TERRAIN_DEM_SOURCE_ID);
+      this.lastSourceKeys.delete(TERRAIN_DEM_SOURCE_ID);
+    }
+  }
+
   private ensureRasterLayer(definition: LayerDefinition): void {
     if (!this.map || !this.settings) return;
+
+    if (!definition.visible) {
+      this.removeLayer(definition.layerId, definition.sourceId);
+      this.lastSourceKeys.delete(definition.sourceId);
+      return;
+    }
 
     const sourceKey = `${this.settings.proxyBaseUrl}|${definition.providerId}|${definition.layerName}`;
     if (this.lastSourceKeys.get(definition.sourceId) !== sourceKey) {
@@ -266,6 +304,8 @@ export class RasterLayerManager {
 
     if (!definition.enabled) {
       this.disableTerrain();
+      this.removeSource(definition.sourceId);
+      this.lastSourceKeys.delete(definition.sourceId);
       return;
     }
 
@@ -508,6 +548,11 @@ export class RasterLayerManager {
     this.scheduleEnsureLayers();
   }
 
+  private onMapError(event?: unknown): void {
+    if (!this.isProxyBackedMapError(event)) return;
+    this.scheduleProxyFailure();
+  }
+
   private patchSetStyle(): void {
     if (!this.map || this.patchedMap === this.map) return;
     const setStyle = this.map.setStyle;
@@ -595,6 +640,56 @@ export class RasterLayerManager {
     if (this.ensureTimer === null) return;
     window.clearTimeout(this.ensureTimer);
     this.ensureTimer = null;
+  }
+
+  private scheduleProxyFailure(): void {
+    if (!this.proxyFailureHandler || this.proxyFailureTimer !== null) return;
+    this.proxyFailureTimer = window.setTimeout(() => {
+      this.proxyFailureTimer = null;
+      this.proxyFailureHandler?.();
+    }, 500);
+  }
+
+  private clearScheduledProxyFailure(): void {
+    if (this.proxyFailureTimer === null) return;
+    window.clearTimeout(this.proxyFailureTimer);
+    this.proxyFailureTimer = null;
+  }
+
+  private isProxyBackedMapError(event?: unknown): boolean {
+    if (!this.settings) return false;
+    const candidate = event as {
+      sourceId?: unknown;
+      source?: { id?: unknown };
+      error?: { message?: unknown; stack?: unknown };
+      url?: unknown;
+      tile?: { url?: unknown };
+    } | undefined;
+
+    const sourceId = typeof candidate?.sourceId === 'string'
+      ? candidate.sourceId
+      : typeof candidate?.source?.id === 'string'
+        ? candidate.source.id
+        : '';
+    if (
+      sourceId === SATELLITE_SOURCE_ID ||
+      sourceId === STREET_VIEW_SOURCE_ID ||
+      sourceId === TERRAIN_DEM_SOURCE_ID
+    ) {
+      return true;
+    }
+
+    const proxyTilePrefix = `${this.settings.proxyBaseUrl}/tiles/`;
+    const details = [
+      candidate?.url,
+      candidate?.tile?.url,
+      candidate?.error?.message,
+      candidate?.error?.stack,
+    ]
+      .filter((value): value is string => typeof value === 'string')
+      .join('\n');
+
+    return details.includes(proxyTilePrefix);
   }
 
   private isStyleReady(): boolean {

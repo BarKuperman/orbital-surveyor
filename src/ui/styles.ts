@@ -104,6 +104,11 @@ export function injectSurveyorStyles(): void {
       background: hsl(var(--primary));
     }
 
+    .os-toggle[data-disabled="true"] {
+      cursor: not-allowed;
+      opacity: 0.52;
+    }
+
     .os-toggle-thumb {
       position: absolute;
       top: 2px;

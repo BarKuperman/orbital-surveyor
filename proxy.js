@@ -420,7 +420,10 @@ function buildHealth() {
   const anyConfigured = Object.values(providerStatus).some((provider) => provider.configured);
   return {
     ok: anyConfigured,
+    ready: anyConfigured,
     status: anyConfigured ? 'ready' : 'No tile providers configured. Set GOOGLE_MAPS_API_KEY, MAPTILER_API_KEY, or CUSTOM_*_URL.',
+    timestamp: new Date().toISOString(),
+    uptimeSeconds: Math.round(process.uptime()),
     providers: providerStatus,
   };
 }

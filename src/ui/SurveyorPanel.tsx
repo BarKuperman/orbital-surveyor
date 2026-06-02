@@ -51,9 +51,10 @@ export function SurveyorPanel({ store, onSettingsChange }: Props) {
   const satelliteProviders = useMemo(() => filterProviders('satellite'), []);
   const terrainProviders = useMemo(() => filterProviders('terrain'), []);
   const proxyStatus = formatProxyStatus(snapshot);
+  const proxyReady = proxyStatus.ok;
 
   const updateSettings = (patch: Partial<SurveyorSettings>) => {
-    void store.updateSettings(patch).then(onSettingsChange);
+    void store.updateSettings(patch).then(() => onSettingsChange(store.getSnapshot().effectiveSettings));
   };
 
   const updateCityLayerGroup = (
@@ -107,9 +108,16 @@ export function SurveyorPanel({ store, onSettingsChange }: Props) {
     >
       <OverlaySection
         title="Satellite"
-        description={snapshot.settings.satelliteEnabled ? 'Imagery visible' : 'Imagery hidden'}
+        description={formatOverlayDescription(
+          snapshot.settings.satelliteEnabled,
+          snapshot.effectiveSettings.satelliteEnabled,
+          'Imagery visible',
+          'Imagery hidden',
+          proxyStatus.label,
+        )}
         icon={SatelliteIcon}
-        enabled={snapshot.settings.satelliteEnabled}
+        enabled={snapshot.effectiveSettings.satelliteEnabled}
+        disabled={!proxyReady}
         open={satelliteOpen}
         onOpenChange={setSatelliteOpen}
         onEnabledChange={(satelliteEnabled) => updateSettings({ satelliteEnabled })}
@@ -124,9 +132,16 @@ export function SurveyorPanel({ store, onSettingsChange }: Props) {
 
       <OverlaySection
         title="Terrain"
-        description={snapshot.settings.terrainEnabled ? '3D terrain enabled' : '3D terrain disabled'}
+        description={formatOverlayDescription(
+          snapshot.settings.terrainEnabled,
+          snapshot.effectiveSettings.terrainEnabled,
+          '3D terrain enabled',
+          '3D terrain disabled',
+          proxyStatus.label,
+        )}
         icon={TerrainIcon}
-        enabled={snapshot.settings.terrainEnabled}
+        enabled={snapshot.effectiveSettings.terrainEnabled}
+        disabled={!proxyReady}
         open={terrainOpen}
         onOpenChange={setTerrainOpen}
         onEnabledChange={(terrainEnabled) => updateSettings({ terrainEnabled })}
@@ -150,9 +165,16 @@ export function SurveyorPanel({ store, onSettingsChange }: Props) {
 
       <OverlaySection
         title="Street View"
-        description={snapshot.settings.streetViewEnabled ? 'Availability visible' : 'Availability hidden'}
+        description={formatOverlayDescription(
+          snapshot.settings.streetViewEnabled,
+          snapshot.effectiveSettings.streetViewEnabled,
+          'Availability visible',
+          'Availability hidden',
+          proxyStatus.label,
+        )}
         icon={StreetViewIcon}
-        enabled={snapshot.settings.streetViewEnabled}
+        enabled={snapshot.effectiveSettings.streetViewEnabled}
+        disabled={!proxyReady}
         onEnabledChange={(streetViewEnabled) => updateSettings({ streetViewEnabled })}
       />
 
@@ -231,6 +253,7 @@ function OverlaySection({
   description,
   icon,
   enabled,
+  disabled,
   open,
   children,
   onOpenChange,
@@ -240,6 +263,7 @@ function OverlaySection({
   description: string;
   icon?: Component;
   enabled: boolean;
+  disabled: boolean;
   open?: boolean;
   children?: unknown;
   onOpenChange?: (open: boolean) => void;
@@ -256,6 +280,7 @@ function OverlaySection({
       action={(
         <ToggleButton
           checked={enabled}
+          disabled={disabled}
           onChange={onEnabledChange}
         />
       )}
@@ -319,9 +344,11 @@ function PanelSection({
 
 function ToggleButton({
   checked,
+  disabled,
   onChange,
 }: {
   checked: boolean;
+  disabled?: boolean;
   onChange: (checked: boolean) => void;
 }) {
   return (
@@ -329,8 +356,10 @@ function ToggleButton({
       type="button"
       role="switch"
       aria-checked={checked}
+      disabled={disabled}
       className="os-toggle"
       data-checked={checked ? 'true' : 'false'}
+      data-disabled={disabled ? 'true' : 'false'}
       onClick={() => onChange(!checked)}
     >
       <span className="os-toggle-thumb" />
@@ -446,7 +475,21 @@ function formatProxyStatus(snapshot: SurveyorSnapshot): { ok: boolean; label: st
     return { ok: false, label: 'Checking' };
   }
   return {
-    ok: snapshot.proxyHealth.ok,
-    label: snapshot.proxyHealth.ok ? 'Ready' : snapshot.proxyHealth.status,
+    ok: snapshot.proxyHealth.ok && (snapshot.proxyHealth.ready ?? true),
+    label: snapshot.proxyHealth.ok && (snapshot.proxyHealth.ready ?? true)
+      ? 'Ready'
+      : snapshot.proxyHealth.status,
   };
+}
+
+function formatOverlayDescription(
+  requested: boolean,
+  active: boolean,
+  activeLabel: string,
+  inactiveLabel: string,
+  blockedReason: string,
+): string {
+  if (active) return activeLabel;
+  if (requested) return blockedReason;
+  return inactiveLabel;
 }

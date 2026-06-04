@@ -39,7 +39,7 @@ export class SurveyorStore {
 
   async initialize(): Promise<void> {
     const stored = await this.loadSettings();
-    this.settings = mergeSettings(stored);
+    this.settings = resetOverlayEnabledSettings(mergeSettings(stored));
     this.saveSettings(this.settings);
     this.emit();
     await this.refreshProxyHealth();
@@ -180,4 +180,13 @@ function writeLocalSettings(settings: SurveyorSettings): void {
   } catch {
     // Settings are non-critical; keep the in-memory state if storage is unavailable.
   }
+}
+
+function resetOverlayEnabledSettings(settings: SurveyorSettings): SurveyorSettings {
+  return {
+    ...settings,
+    satelliteEnabled: false,
+    terrainEnabled: false,
+    streetViewEnabled: false,
+  };
 }

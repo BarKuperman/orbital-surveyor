@@ -5,9 +5,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const CURRENT_LOG_PATH = path.join(__dirname, 'proxy-current.log');
-const PREVIOUS_LOG_PATH = path.join(__dirname, 'proxy-previous.log');
+const LOG_DIR = path.join(__dirname, 'logs');
+const CURRENT_LOG_PATH = path.join(LOG_DIR, 'proxy-current.log');
+const PREVIOUS_LOG_PATH = path.join(LOG_DIR, 'proxy-previous.log');
 
+ensureProxyLogDirectory();
 rotateProxyLogs();
 const proxyLogStream = createProxyLogStream();
 registerCriticalErrorHandlers();
@@ -465,6 +467,14 @@ function rotateProxyLogs() {
     }
   } catch (error) {
     console.error('[proxy] Failed to rotate proxy log:', error);
+  }
+}
+
+function ensureProxyLogDirectory() {
+  try {
+    fs.mkdirSync(LOG_DIR, { recursive: true });
+  } catch (error) {
+    console.error('[proxy] Failed to create proxy log directory:', error);
   }
 }
 

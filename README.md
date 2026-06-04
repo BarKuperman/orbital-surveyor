@@ -1,11 +1,11 @@
 # Orbital Surveyor
 
-Subway Builder mod that adds satellite imagery, streetview and 3D terrain to the in-game MapLibre map.
+Subway Builder mod that adds satellite imagery, Street View, and 3D terrain to the in-game MapLibre map.
 
 ## User Guide
 
 1. Install [Node.js](https://nodejs.org/) if it is not already installed.
-2. If installed not through Railyard, put the mod files in your Subway Builder mods folder.
+2. If you are not installing through Railyard, put the mod files in your Subway Builder mods folder.
 3. Start the proxy before opening or reloading the mod by double-clicking the launcher for your OS in the mod folder:
 
    - Windows: `start-proxy-windows.cmd`
@@ -24,7 +24,7 @@ Subway Builder mod that adds satellite imagery, streetview and 3D terrain to the
 5. Enable Orbital Surveyor in Subway Builder under Settings > Mods.
 6. Open the Orbital Surveyor panel in-game and enable Satellite, Terrain, or Street View as needed.
 
-The panel includes a proxy status area at the bottom. If the proxy is not reachable, overlay toggles are disabled and any active overlay layers are removed until the proxy is available again.
+The panel includes a proxy status area at the bottom. If the proxy is not reachable, overlay toggles are disabled, active overlay layers are removed, and an in-game warning is shown once per outage. If the proxy comes back during the same map session, previously requested overlays can restore after health becomes ready again.
 
 ## Optional Setup
 
@@ -47,7 +47,7 @@ Add a Google Maps key if you want the Google Map Tiles API provider:
 
 The Orbital Surveyor panel is scrollable and includes a Map layers section for controlling built-in game layers while an overlay mode is active.
 
-Layer switches are off by default so satellite and terrain overlays are easier to see. Turn a switch on to show that specific game layer above the overlay. Base mode restores the game's own layer visibility, and the mod only restores layers it hid itself.
+Map layer switches are off by default so satellite and terrain overlays are easier to see. Turn a switch on to show that specific game layer above the overlay. When overlay modes are off, the game controls its own layer visibility again, and the mod only restores layers it hid itself.
 
 Controlled layer IDs:
 
@@ -55,7 +55,7 @@ Controlled layer IDs:
 - Water: `water`, `ocean-depth-labels`, `general-tiles`
 - Parks: `parks-large`, `parks-small`
 - Roads: `road-labels`, `intersections-layer`, `road-lines`
-- Airports: `airports`,`runways-taxiways`
+- Airports: `airports`, `runways-taxiways`
 - Area labels: `neighborhood-labels`, `suburb-labels`, `city-labels`
 
 Use Reset in the Map layers section to return all controlled layers to the hidden-by-default overlay view.
@@ -72,7 +72,8 @@ Terrain mode is heavier than the normal map. When Subway Builder reloads its gam
 
 Because terrain takes longer to load, it may briefly disappear or lag behind after changing screens, switching 2D/3D view, or changing the game's map layers. It should restore automatically after a moment.
 
-Tracks and stations may be less visible or briefly hidden while Terrain is enabled, especially in 3D view or during layer reloads.
+>[!WARNING]
+>Tracks and stations may be less visible or briefly hidden while Terrain is enabled, especially in 3D view or during layer reloads.
 
 ## Proxy Details
 
@@ -82,11 +83,7 @@ The proxy defaults to `http://127.0.0.1:8787` and exposes:
 - `GET /providers`
 - `GET /tiles/:provider/:layer/:z/:x/:y`
 
-`GET /health` returns general proxy readiness (`ok`, `ready`, `status`), provider configuration details, a timestamp, and proxy uptime. The mod checks this endpoint before enabling overlays, polls it periodically, and triggers an immediate health check when MapLibre reports failed proxy-backed tile requests.
-
-Street View availability is available without a Google Maps API key through:
-
-- `GET /tiles/streetview/availability/:z/:x/:y`
+`GET /health` returns general proxy readiness (`ok`, `ready`, `status`), provider configuration details, a timestamp, and proxy uptime. It does not test whether every upstream provider is reachable. The mod checks this endpoint before enabling overlays, polls it periodically, and triggers an immediate health check when MapLibre reports failed proxy-backed tile requests.
 
 Provider API keys are read only by `proxy.js` from environment variables or `.env`. The default satellite provider and default terrain provider do not require API keys.
 
@@ -130,12 +127,6 @@ Built-in provider IDs:
 - `streetview`: Google Street View availability overlay through the local proxy.
 - `custom`: Optional XYZ templates from `CUSTOM_SATELLITE_URL` and `CUSTOM_TERRAIN_URL`.
 
-For MapTiler terrain, the default upstream URL is:
-
-```text
-https://api.maptiler.com/tiles/terrain-rgb-v2/{z}/{x}/{y}.webp?key=...
-```
-
-Terrain mode enables MapLibre `raster-dem` terrain. Use the in-game terrain slider to control terrain exaggeration.
-
-Mapterhorn terrain uses 512px Terrarium-encoded WebP tiles. It does not need an API key.
+Orbital Surveyor's source code is licensed under MIT. Third-party map tiles,
+imagery, terrain data, and Street View availability data remain subject to their
+respective provider licenses, attribution requirements, and usage policies.

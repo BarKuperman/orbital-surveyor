@@ -88,6 +88,14 @@ export function injectSurveyorStyles(): void {
       line-height: 1;
     }
 
+    .os-folder-action {
+      width: 100%;
+      min-height: 32px;
+      height: 32px;
+      border-radius: 6px;
+      font-size: 12px;
+    }
+
     .os-toggle {
       position: relative;
       width: 42px;

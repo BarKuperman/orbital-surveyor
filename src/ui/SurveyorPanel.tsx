@@ -90,6 +90,18 @@ export function SurveyorPanel({ store, onSettingsChange }: Props) {
   const allCityLayersVisible = CITY_LAYER_GROUPS.every((group) => (
     group.layers.every((layerId) => snapshot.settings.cityLayers[layerId])
   ));
+  const canOpenModsFolder = Boolean(window.electron?.openModsFolder);
+
+  const openModsFolder = () => {
+    if (!window.electron?.openModsFolder) {
+      api.ui.showNotification('Could not open the mods folder from this environment.', 'warning');
+      return;
+    }
+    void window.electron.openModsFolder().catch((error: unknown) => {
+      console.warn('[OrbitalSurveyor] Failed to open mods folder', error);
+      api.ui.showNotification('Failed to open the mods folder.', 'error');
+    });
+  };
 
   return (
     <div
@@ -244,6 +256,15 @@ export function SurveyorPanel({ store, onSettingsChange }: Props) {
           Refresh status
         </button>
       </div>
+
+      <Button
+        variant="secondary"
+        className="os-folder-action"
+        disabled={!canOpenModsFolder}
+        onClick={openModsFolder}
+      >
+        Open mod folder
+      </Button>
     </div>
   );
 }

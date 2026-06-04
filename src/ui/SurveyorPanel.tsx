@@ -24,7 +24,6 @@ const layerIcons = {
   buildings: icons.Building,
   water: icons.Droplets,
   parks: icons.TreePine,
-  general: icons.Map,
   roads: icons.Route,
   airports: icons.Plane,
   areaLabels: icons.Type,
@@ -180,7 +179,7 @@ export function SurveyorPanel({ store, onSettingsChange }: Props) {
         description={formatOverlayDescription(
           snapshot.settings.streetViewEnabled,
           snapshot.effectiveSettings.streetViewEnabled,
-          'Availability visible',
+          'Click map to open browser',
           'Availability hidden',
           proxyStatus.label,
         )}

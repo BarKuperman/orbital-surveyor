@@ -52,9 +52,8 @@ Layer switches are off by default so satellite and terrain overlays are easier t
 Controlled layer IDs:
 
 - Buildings: `buildings-3d`
-- Water: `water`, `ocean-depth-labels`
+- Water: `water`, `ocean-depth-labels`, `general-tiles`
 - Parks: `parks-large`, `parks-small`
-- General tiles: `general-tiles`
 - Roads: `road-labels`, `intersections-layer`, `road-lines`
 - Airports: `airports`,`runways-taxiways`
 - Area labels: `neighborhood-labels`, `suburb-labels`, `city-labels`
@@ -72,6 +71,8 @@ When Street View mode is enabled, clicking the map opens Google Maps Street View
 Terrain mode is heavier than the normal map. When Subway Builder reloads its game layers, Orbital Surveyor's terrain has to reload too.
 
 Because terrain takes longer to load, it may briefly disappear or lag behind after changing screens, switching 2D/3D view, or changing the game's map layers. It should restore automatically after a moment.
+
+Tracks and stations may be less visible or briefly hidden while Terrain is enabled, especially in 3D view or during layer reloads.
 
 ## Proxy Details
 

@@ -5,7 +5,14 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const LOG_DIR = path.join(__dirname, 'logs');
+const CURRENT_LOG_PATH = path.join(LOG_DIR, 'proxy-current.log');
+const PREVIOUS_LOG_PATH = path.join(LOG_DIR, 'proxy-previous.log');
 
+ensureProxyLogDirectory();
+rotateProxyLogs();
+const proxyLogStream = createProxyLogStream();
+registerCriticalErrorHandlers();
 loadDotEnv(path.join(__dirname, '.env'));
 
 const PORT = Number.parseInt(process.env.PROXY_PORT || '8787', 10);
@@ -13,15 +20,19 @@ const HOST = process.env.PROXY_HOST || '127.0.0.1';
 const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY || '';
 const MAPTILER_API_KEY = process.env.MAPTILER_API_KEY || '';
 const OSM_USER_AGENT = process.env.OSM_USER_AGENT || 'OrbitalSurveyor/1.0 (+https://github.com/BarKuperman/orbital-surveyor)';
+const UPSTREAM_REQUEST_TIMEOUT_MS = 30000;
+const proxyAgent = new https.Agent({
+  keepAlive: true,
+  maxSockets: 64,
+  maxFreeSockets: 16,
+  timeout: UPSTREAM_REQUEST_TIMEOUT_MS,
+});
 
 const googleSessions = new Map();
 const GOOGLE_XYZ_PROVIDERS = new Set(['google-sat', 'google-hybrid', 'google-road']);
-const GOOGLE_XYZ_LAYER_CODES = {
-  'google-sat': [[132]],
-  'google-hybrid': [[138]],
-  'google-road': [[126]],
-};
 const TILE_TEXT_OFFSET = 17;
+const STREET_VIEW_AVAILABILITY_TILE = buildStreetViewAvailabilityTileConfig();
+const GOOGLE_XYZ_TILE = buildGoogleXyzTileConfig();
 
 const providers = {
   streetview: {
@@ -68,13 +79,28 @@ const providers = {
 
 const server = http.createServer((request, response) => {
   void handleRequest(request, response).catch((error) => {
-    console.error('[proxy] Unhandled request error:', error);
+    logCriticalError('Unhandled request error', error, {
+      method: request.method,
+      path: getRequestPath(request),
+    });
+    if (response.headersSent || response.destroyed) {
+      response.destroy(error);
+      return;
+    }
     sendJson(response, 500, { error: 'proxy_error', message: String(error?.message || error) });
   });
 });
 
+server.on('error', (error) => {
+  const fatal = !server.listening;
+  logCriticalError('Proxy server error', error, { host: HOST, port: PORT }, { sync: fatal });
+  if (fatal) {
+    process.exit(1);
+  }
+});
+
 server.listen(PORT, HOST, () => {
-  console.log(`[proxy] Orbital Surveyor proxy listening at http://${HOST}:${PORT}`);
+  logProxyInfo(`[${new Date().toISOString()}] [proxy] Orbital Surveyor proxy listening at http://${HOST}:${PORT}`);
   console.log('[proxy] Press Ctrl+C to stop.');
 });
 
@@ -171,27 +197,11 @@ async function resolveTileUrl(provider, layer, z, x, y) {
 }
 
 function resolveStreetViewAvailabilityUrl(z, x, y) {
-  const host = decodeTileText([126, 133, 132, 66, 63], [120, 128, 128, 120, 125, 118, 114], [129, 122, 132, 63, 116, 128, 126]);
-  const pathName = decodeTileText([135], [133]);
-  const layerToken = decodeTileText([132, 135, 135, 141, 116], [115, 112, 116, 125, 122], [118, 127, 133, 75, 114, 129, 122, 135, 68]);
-  const styleValue = decodeTileText([69, 65], [61], [66, 73]);
-
-  return `https://${host}/${pathName}?hl=en-US&lyrs=${layerToken}&style=${styleValue}&x=${encodeURIComponent(x)}&y=${encodeURIComponent(y)}&z=${encodeURIComponent(z)}`;
+  return `https://${STREET_VIEW_AVAILABILITY_TILE.host}/${STREET_VIEW_AVAILABILITY_TILE.pathName}?hl=en-US&lyrs=${STREET_VIEW_AVAILABILITY_TILE.layerToken}&style=${STREET_VIEW_AVAILABILITY_TILE.styleValue}&x=${encodeURIComponent(x)}&y=${encodeURIComponent(y)}&z=${encodeURIComponent(z)}`;
 }
 
 function resolveGoogleXyzTileUrl(provider, z, x, y) {
-  const host = decodeTileText([126, 133, 66, 63], [120, 128, 128, 120, 125], [118, 63, 116, 128, 126]);
-  const pathName = decodeTileText([135], [133]);
-  const layerParam = decodeTileText([125, 138], [131, 132]);
-  const layerToken = decodeTileText(...GOOGLE_XYZ_LAYER_CODES[provider]);
-  const params = new URLSearchParams({
-    [layerParam]: layerToken,
-    x,
-    y,
-    z,
-  });
-
-  return `https://${host}/${pathName}?${params.toString()}`;
+  return `https://${GOOGLE_XYZ_TILE.host}/${GOOGLE_XYZ_TILE.pathName}?${GOOGLE_XYZ_TILE.layerQueries[provider]}&x=${x}&y=${y}&z=${z}`;
 }
 
 function decodeTileText(...segments) {
@@ -199,6 +209,35 @@ function decodeTileText(...segments) {
     .flat()
     .map((code) => String.fromCharCode(code - TILE_TEXT_OFFSET))
     .join('');
+}
+
+function buildStreetViewAvailabilityTileConfig() {
+  return {
+    host: decodeTileText([126, 133, 132, 66, 63], [120, 128, 128, 120, 125, 118, 114], [129, 122, 132, 63, 116, 128, 126]),
+    pathName: decodeTileText([135], [133]),
+    layerToken: decodeTileText([132, 135, 135, 141, 116], [115, 112, 116, 125, 122], [118, 127, 133, 75, 114, 129, 122, 135, 68]),
+    styleValue: decodeTileText([69, 65], [61], [66, 73]),
+  };
+}
+
+function buildGoogleXyzTileConfig() {
+  const layerCodes = {
+    'google-sat': [[132]],
+    'google-hybrid': [[138]],
+    'google-road': [[126]],
+  };
+  const layerParam = decodeTileText([125, 138], [131, 132]);
+
+  return {
+    host: decodeTileText([126, 133, 66, 63], [120, 128, 128, 120, 125], [118, 63, 116, 128, 126]),
+    pathName: decodeTileText([135], [133]),
+    layerQueries: Object.fromEntries(
+      Object.entries(layerCodes).map(([provider, segments]) => {
+        const layerToken = decodeTileText(...segments);
+        return [provider, `${layerParam}=${encodeURIComponent(layerToken)}`];
+      }),
+    ),
+  };
 }
 
 function resolveMapTilerTarget(layer) {
@@ -276,7 +315,13 @@ async function getGoogleSession(layer) {
 }
 
 function proxyImage(response, upstreamUrl, headers = {}) {
-  https.get(upstreamUrl, { headers }, (upstream) => {
+  let upstreamResponse = null;
+  const upstreamRequest = https.get(upstreamUrl, { agent: proxyAgent, headers }, (upstream) => {
+    upstreamResponse = upstream;
+    upstream.on('error', (error) => {
+      sendUpstreamFailure(response, error);
+    });
+
     const contentType = upstream.headers['content-type'] || 'application/octet-stream';
 
     if ((upstream.statusCode || 500) >= 400) {
@@ -301,9 +346,34 @@ function proxyImage(response, upstreamUrl, headers = {}) {
       'content-type': contentType,
     });
     upstream.pipe(response);
-  }).on('error', (error) => {
-    sendJson(response, 502, { error: 'upstream_request_failed', message: error.message });
   });
+
+  response.on('close', () => {
+    if (response.writableEnded) return;
+    upstreamRequest.destroy();
+    upstreamResponse?.destroy();
+  });
+
+  upstreamRequest.setTimeout(UPSTREAM_REQUEST_TIMEOUT_MS, () => {
+    const error = new Error(`Upstream request timed out after ${UPSTREAM_REQUEST_TIMEOUT_MS}ms`);
+    error.code = 'ETIMEDOUT';
+    upstreamRequest.destroy(error);
+  });
+
+  upstreamRequest.on('error', (error) => {
+    sendUpstreamFailure(response, error);
+  });
+}
+
+function sendUpstreamFailure(response, error) {
+  if (response.destroyed || response.writableEnded) return;
+  if (response.headersSent) {
+    response.destroy(error);
+    return;
+  }
+
+  const statusCode = error.code === 'ETIMEDOUT' ? 504 : 502;
+  sendJson(response, statusCode, { error: 'upstream_request_failed', message: error.message });
 }
 
 function requestJson({ method, url, headers, body }) {
@@ -314,6 +384,7 @@ function requestJson({ method, url, headers, body }) {
         method,
         hostname: parsedUrl.hostname,
         path: `${parsedUrl.pathname}${parsedUrl.search}`,
+        agent: proxyAgent,
         headers,
       },
       (response) => {
@@ -335,6 +406,11 @@ function requestJson({ method, url, headers, body }) {
         });
       },
     );
+    request.setTimeout(UPSTREAM_REQUEST_TIMEOUT_MS, () => {
+      const error = new Error(`Upstream request timed out after ${UPSTREAM_REQUEST_TIMEOUT_MS}ms`);
+      error.code = 'ETIMEDOUT';
+      request.destroy(error);
+    });
     request.on('error', reject);
     request.write(body);
     request.end();
@@ -346,7 +422,10 @@ function buildHealth() {
   const anyConfigured = Object.values(providerStatus).some((provider) => provider.configured);
   return {
     ok: anyConfigured,
+    ready: anyConfigured,
     status: anyConfigured ? 'ready' : 'No tile providers configured. Set GOOGLE_MAPS_API_KEY, MAPTILER_API_KEY, or CUSTOM_*_URL.',
+    timestamp: new Date().toISOString(),
+    uptimeSeconds: Math.round(process.uptime()),
     providers: providerStatus,
   };
 }
@@ -376,6 +455,106 @@ function sendJson(response, statusCode, payload) {
     'cache-control': 'no-store',
   });
   response.end(JSON.stringify(payload));
+}
+
+function rotateProxyLogs() {
+  try {
+    if (fs.existsSync(PREVIOUS_LOG_PATH)) {
+      fs.unlinkSync(PREVIOUS_LOG_PATH);
+    }
+    if (fs.existsSync(CURRENT_LOG_PATH)) {
+      fs.renameSync(CURRENT_LOG_PATH, PREVIOUS_LOG_PATH);
+    }
+  } catch (error) {
+    console.error('[proxy] Failed to rotate proxy log:', error);
+  }
+}
+
+function ensureProxyLogDirectory() {
+  try {
+    fs.mkdirSync(LOG_DIR, { recursive: true });
+  } catch (error) {
+    console.error('[proxy] Failed to create proxy log directory:', error);
+  }
+}
+
+function createProxyLogStream() {
+  const stream = fs.createWriteStream(CURRENT_LOG_PATH, { flags: 'a' });
+  stream.on('error', (error) => {
+    console.error('[proxy] Failed to write proxy log:', error);
+  });
+  return stream;
+}
+
+function registerCriticalErrorHandlers() {
+  process.on('uncaughtException', (error) => {
+    logCriticalError('Uncaught exception', error, undefined, { sync: true });
+    process.exit(1);
+  });
+
+  process.on('unhandledRejection', (reason) => {
+    logCriticalError('Unhandled promise rejection', reason);
+  });
+}
+
+function logCriticalError(message, error, context = undefined, options = {}) {
+  const lines = [
+    `[${new Date().toISOString()}] ERROR ${message}`,
+    context ? `Context: ${safeJson(context)}` : null,
+    formatError(error),
+  ].filter(Boolean);
+  const entry = `${lines.join('\n')}\n\n`;
+
+  try {
+    if (options.sync) {
+      fs.appendFileSync(CURRENT_LOG_PATH, entry, 'utf8');
+      console.error(entry.trimEnd());
+      return;
+    }
+    proxyLogStream.write(entry);
+    console.error(entry.trimEnd());
+  } catch (logError) {
+    console.error('[proxy] Failed to write proxy log:', logError);
+  }
+}
+
+function logProxyInfo(message) {
+  const entry = `${message}\n`;
+  proxyLogStream.write(entry);
+  console.log(message);
+}
+
+function formatError(error) {
+  if (error instanceof Error) {
+    const details = {
+      name: error.name,
+      message: error.message,
+      code: error.code,
+      cause: error.cause,
+    };
+    return [
+      `Error: ${safeJson(details)}`,
+      error.stack ? `Stack:\n${error.stack}` : null,
+    ].filter(Boolean).join('\n');
+  }
+
+  return `Error: ${safeJson(error)}`;
+}
+
+function safeJson(value) {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function getRequestPath(request) {
+  try {
+    return new URL(request.url || '/', `http://${request.headers.host || `${HOST}:${PORT}`}`).pathname;
+  } catch {
+    return request.url || '/';
+  }
 }
 
 function loadDotEnv(filePath) {

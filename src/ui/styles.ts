@@ -88,6 +88,14 @@ export function injectSurveyorStyles(): void {
       line-height: 1;
     }
 
+    .os-folder-action {
+      width: 100%;
+      min-height: 32px;
+      height: 32px;
+      border-radius: 6px;
+      font-size: 12px;
+    }
+
     .os-toggle {
       position: relative;
       width: 42px;
@@ -102,6 +110,11 @@ export function injectSurveyorStyles(): void {
     .os-toggle[data-checked="true"] {
       border-color: hsl(var(--primary));
       background: hsl(var(--primary));
+    }
+
+    .os-toggle[data-disabled="true"] {
+      cursor: not-allowed;
+      opacity: 0.52;
     }
 
     .os-toggle-thumb {

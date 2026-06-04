@@ -5,3 +5,5 @@ debug/
 .env
 .DS_Store
 .claude/
+AGENTS.md
+logs/

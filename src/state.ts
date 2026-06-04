@@ -3,14 +3,23 @@ import type { ModdingAPI } from './types/api';
 
 export type ProxyHealth = {
   ok: boolean;
+  ready?: boolean;
   status: string;
-  providers: Record<string, { configured: boolean; layers: string[] }>;
+  timestamp?: string;
+  uptimeSeconds?: number;
+  providers: Record<string, { configured: boolean; layers: string[]; status?: string }>;
 };
 
 export type SurveyorSnapshot = {
   settings: SurveyorSettings;
+  effectiveSettings: SurveyorSettings;
   proxyHealth: ProxyHealth | null;
   proxyError: string | null;
+};
+
+export type OverlayAvailability = {
+  proxyReady: boolean;
+  proxyReason: string;
 };
 
 type Listener = () => void;
@@ -23,6 +32,7 @@ export class SurveyorStore {
   private proxyError: string | null = null;
   private listeners = new Set<Listener>();
   private healthTimer: number | null = null;
+  private healthPromise: Promise<void> | null = null;
 
   constructor(private readonly api: ModdingAPI) {}
 
@@ -47,9 +57,14 @@ export class SurveyorStore {
   getSnapshot(): SurveyorSnapshot {
     return {
       settings: { ...this.settings },
+      effectiveSettings: this.getEffectiveSettings(),
       proxyHealth: this.proxyHealth,
       proxyError: this.proxyError,
     };
+  }
+
+  getEffectiveSettings(): SurveyorSettings {
+    return applyOverlayAvailability(this.settings, this.proxyHealth, this.proxyError);
   }
 
   subscribe(listener: Listener): () => void {
@@ -68,6 +83,14 @@ export class SurveyorStore {
   }
 
   async refreshProxyHealth(): Promise<void> {
+    if (this.healthPromise) return this.healthPromise;
+    this.healthPromise = this.fetchProxyHealth().finally(() => {
+      this.healthPromise = null;
+    });
+    return this.healthPromise;
+  }
+
+  private async fetchProxyHealth(): Promise<void> {
     const controller = new AbortController();
     const timeoutId = window.setTimeout(() => controller.abort(), 2500);
 
@@ -90,4 +113,37 @@ export class SurveyorStore {
   private emit(): void {
     this.listeners.forEach((listener) => listener());
   }
+}
+
+export function applyOverlayAvailability(
+  settings: SurveyorSettings,
+  proxyHealth: ProxyHealth | null,
+  proxyError: string | null,
+): SurveyorSettings {
+  const availability = resolveOverlayAvailability(proxyHealth, proxyError);
+  return {
+    ...settings,
+    satelliteEnabled: settings.satelliteEnabled && availability.proxyReady,
+    terrainEnabled: settings.terrainEnabled && availability.proxyReady,
+    streetViewEnabled: settings.streetViewEnabled && availability.proxyReady,
+  };
+}
+
+export function resolveOverlayAvailability(
+  proxyHealth: ProxyHealth | null,
+  proxyError: string | null,
+): OverlayAvailability {
+  const proxyReason = resolveProxyReason(proxyHealth, proxyError);
+  const proxyReady = !proxyError && Boolean(proxyHealth?.ok && (proxyHealth.ready ?? true));
+
+  return {
+    proxyReady,
+    proxyReason,
+  };
+}
+
+function resolveProxyReason(proxyHealth: ProxyHealth | null, proxyError: string | null): string {
+  if (proxyError) return proxyError;
+  if (!proxyHealth) return 'Checking proxy';
+  return proxyHealth.ok && (proxyHealth.ready ?? true) ? 'Ready' : proxyHealth.status;
 }

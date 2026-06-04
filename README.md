@@ -12,11 +12,19 @@ Subway Builder mod that adds satellite imagery, streetview and 3D terrain to the
    - macOS: `start-proxy-macos.command`
    - Linux: `start-proxy-linux.sh`
 
+   On Linux, if the launcher is not executable yet, run:
+
+   ```bash
+   chmod +x start-proxy-linux.sh
+   ```
+
    You can also run `node proxy.js` manually from a terminal.
 
 4. Leave the proxy window open while playing.
 5. Enable Orbital Surveyor in Subway Builder under Settings > Mods.
 6. Open the Orbital Surveyor panel in-game and enable Satellite, Terrain, or Street View as needed.
+
+The panel includes a proxy status area at the bottom. If the proxy is not reachable, overlay toggles are disabled and any active overlay layers are removed until the proxy is available again.
 
 ## Optional Setup
 
@@ -73,11 +81,18 @@ The proxy defaults to `http://127.0.0.1:8787` and exposes:
 - `GET /providers`
 - `GET /tiles/:provider/:layer/:z/:x/:y`
 
+`GET /health` returns general proxy readiness (`ok`, `ready`, `status`), provider configuration details, a timestamp, and proxy uptime. The mod checks this endpoint before enabling overlays, polls it periodically, and triggers an immediate health check when MapLibre reports failed proxy-backed tile requests.
+
 Street View availability is available without a Google Maps API key through:
 
 - `GET /tiles/streetview/availability/:z/:x/:y`
 
 Provider API keys are read only by `proxy.js` from environment variables or `.env`. The default satellite provider and default terrain provider do not require API keys.
+
+The proxy writes session logs under `logs/` in the mod folder:
+
+- `logs/proxy-current.log`
+- `logs/proxy-previous.log`
 
 ## Mod Development
 

@@ -887,8 +887,8 @@ export class RasterLayerManager {
 
   private resolveRasterAttribution(providerId: string): string {
     if (providerId === 'esri') return 'Tiles © Esri';
-    if (providerId === 'osm') return '© OpenStreetMap contributors';
-    if (providerId === 'maptiler') return 'Tiles © MapTiler © OpenStreetMap contributors';
+    if (providerId === 'osm') return 'Tiles © OpenStreetMap contributors';
+    if (providerId === 'maptiler') return 'Tiles © MapTiler';
     if (providerId === 'streetview') return 'Street View © Google';
     if (providerId === 'custom') return 'Custom tiles';
     return 'Tiles © Google';
@@ -900,7 +900,7 @@ export class RasterLayerManager {
         encoding: 'terrarium',
         tileSize: 512,
         maxzoom: 17,
-        attribution: 'Terrain © Mapterhorn contributors',
+        attribution: 'Terrain © Mapterhorn',
       };
     }
 
@@ -908,7 +908,7 @@ export class RasterLayerManager {
       encoding: 'mapbox',
       tileSize: 256,
       maxzoom: 14,
-      attribution: 'Terrain © MapTiler © OpenStreetMap contributors',
+      attribution: 'Terrain © MapTiler',
     };
   }
 }

@@ -1,4 +1,4 @@
-import { DEFAULT_SETTINGS, mergeSettings, type SurveyorSettings } from './config';
+import { DEFAULT_SETTINGS, MOD_ID, mergeSettings, type SurveyorSettings } from './config';
 import type { ModdingAPI } from './types/api';
 
 export type ProxyHealth = {
@@ -25,6 +25,7 @@ export type OverlayAvailability = {
 type Listener = () => void;
 
 const STORAGE_KEY = 'settings';
+const LOCAL_STORAGE_KEY = `${MOD_ID}:${STORAGE_KEY}`;
 
 export class SurveyorStore {
   private settings: SurveyorSettings = { ...DEFAULT_SETTINGS };
@@ -37,8 +38,9 @@ export class SurveyorStore {
   constructor(private readonly api: ModdingAPI) {}
 
   async initialize(): Promise<void> {
-    const stored = await this.api.storage.get(STORAGE_KEY, DEFAULT_SETTINGS);
+    const stored = await this.loadSettings();
     this.settings = mergeSettings(stored);
+    this.saveSettings(this.settings);
     this.emit();
     await this.refreshProxyHealth();
     this.healthTimer = window.setInterval(() => {
@@ -75,11 +77,26 @@ export class SurveyorStore {
   async updateSettings(patch: Partial<SurveyorSettings>): Promise<SurveyorSettings> {
     this.settings = mergeSettings({ ...this.settings, ...patch });
     this.emit();
-    await this.api.storage.set(STORAGE_KEY, this.settings);
+    this.saveSettings(this.settings);
     if (patch.proxyBaseUrl !== undefined) {
       await this.refreshProxyHealth();
     }
     return { ...this.settings };
+  }
+
+  private async loadSettings(): Promise<unknown> {
+    const stored = readLocalSettings();
+    if (stored !== null) return stored;
+
+    try {
+      return await this.api.storage.get(STORAGE_KEY, DEFAULT_SETTINGS);
+    } catch {
+      return DEFAULT_SETTINGS;
+    }
+  }
+
+  private saveSettings(settings: SurveyorSettings): void {
+    writeLocalSettings(settings);
   }
 
   async refreshProxyHealth(): Promise<void> {
@@ -146,4 +163,21 @@ function resolveProxyReason(proxyHealth: ProxyHealth | null, proxyError: string 
   if (proxyError) return proxyError;
   if (!proxyHealth) return 'Checking proxy';
   return proxyHealth.ok && (proxyHealth.ready ?? true) ? 'Ready' : proxyHealth.status;
+}
+
+function readLocalSettings(): unknown | null {
+  try {
+    const value = window.localStorage.getItem(LOCAL_STORAGE_KEY);
+    return value ? JSON.parse(value) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeLocalSettings(settings: SurveyorSettings): void {
+  try {
+    window.localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(settings));
+  } catch {
+    // Settings are non-critical; keep the in-memory state if storage is unavailable.
+  }
 }

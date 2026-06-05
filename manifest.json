@@ -1,5 +1,5 @@
 {
-  "id": "com.barku.orbital-surveyor",
+  "id": "orbital-surveyor",
   "name": "Orbital Surveyor",
   "description": "Adds satellite and terrain raster overlays through a local tile proxy.",
   "version": "1.1.0",

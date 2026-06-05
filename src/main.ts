@@ -6,7 +6,15 @@ import { injectSurveyorStyles } from './ui/styles';
 
 const api = window.SubwayBuilderAPI;
 const React = api?.utils.React;
+const RUNTIME_REGISTRATION_KEY = '__orbitalSurveyorRegistered';
+const DUPLICATE_REGISTRATION_WINDOW_MS = 2000;
 type ReadyMap = Parameters<RasterLayerManager['setMap']>[0];
+type RuntimeRegistration = {
+  registeredAt: number;
+};
+type RuntimeWindow = Window & typeof globalThis & {
+  [RUNTIME_REGISTRATION_KEY]?: RuntimeRegistration | boolean;
+};
 
 class OrbitalSurveyorMod {
   private initialized = false;
@@ -107,9 +115,14 @@ class OrbitalSurveyorMod {
 
 }
 
+const runtimeWindow = window as RuntimeWindow;
+
 if (!api) {
   console.error(`${TAG} SubwayBuilderAPI not found`);
+} else if (hasRecentRuntimeRegistration(runtimeWindow)) {
+  console.warn(`${TAG} Another Orbital Surveyor runtime is already registered; skipping duplicate registration.`);
 } else {
+  runtimeWindow[RUNTIME_REGISTRATION_KEY] = { registeredAt: Date.now() };
   const mod = new OrbitalSurveyorMod();
   api.hooks.onMapReady((map) => {
     void mod.initialize(map).catch((error) => {
@@ -118,4 +131,10 @@ if (!api) {
     });
   });
   api.hooks.onGameEnd(() => mod.onGameEnd());
+}
+
+function hasRecentRuntimeRegistration(runtime: RuntimeWindow): boolean {
+  const registration = runtime[RUNTIME_REGISTRATION_KEY];
+  if (!registration || typeof registration !== 'object') return false;
+  return Date.now() - registration.registeredAt < DUPLICATE_REGISTRATION_WINDOW_MS;
 }

@@ -21,6 +21,8 @@ const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY || '';
 const MAPTILER_API_KEY = process.env.MAPTILER_API_KEY || '';
 const OSM_USER_AGENT = process.env.OSM_USER_AGENT || 'OrbitalSurveyor/1.0 (+https://github.com/BarKuperman/orbital-surveyor)';
 const UPSTREAM_REQUEST_TIMEOUT_MS = 30000;
+const TILE_FAILURE_LOG_INTERVAL_MS = 15000;
+const TILE_CACHE_CONTROL = 'public, max-age=604800, stale-if-error=2592000';
 const proxyAgent = new https.Agent({
   keepAlive: true,
   maxSockets: 64,
@@ -29,6 +31,8 @@ const proxyAgent = new https.Agent({
 });
 
 const googleSessions = new Map();
+const tileFailureCounts = new Map();
+let tileFailureFlushTimer = null;
 const GOOGLE_XYZ_PROVIDERS = new Set(['google-sat', 'google-hybrid', 'google-road']);
 const TILE_TEXT_OFFSET = 17;
 const STREET_VIEW_AVAILABILITY_TILE = buildStreetViewAvailabilityTileConfig();
@@ -150,7 +154,7 @@ async function handleTile(response, provider, layer, z, x, y) {
   }
 
   const upstreamUrl = await resolveTileUrl(provider, layer, z, x, y);
-  proxyImage(response, upstreamUrl, getTileRequestHeaders(provider, layer));
+  proxyImage(response, upstreamUrl, getTileRequestHeaders(provider, layer), { provider, layer });
 }
 
 async function resolveTileUrl(provider, layer, z, x, y) {
@@ -314,17 +318,18 @@ async function getGoogleSession(layer) {
   return result.session;
 }
 
-function proxyImage(response, upstreamUrl, headers = {}) {
+function proxyImage(response, upstreamUrl, headers = {}, context = {}) {
   let upstreamResponse = null;
   const upstreamRequest = https.get(upstreamUrl, { agent: proxyAgent, headers }, (upstream) => {
     upstreamResponse = upstream;
     upstream.on('error', (error) => {
-      sendUpstreamFailure(response, error);
+      sendUpstreamFailure(response, error, context);
     });
 
     const contentType = upstream.headers['content-type'] || 'application/octet-stream';
 
     if ((upstream.statusCode || 500) >= 400) {
+      recordTileFailure(context, `status=${upstream.statusCode || 500}`);
       let body = '';
       upstream.setEncoding('utf8');
       upstream.on('data', (chunk) => {
@@ -342,7 +347,7 @@ function proxyImage(response, upstreamUrl, headers = {}) {
 
     response.writeHead(upstream.statusCode || 200, {
       'access-control-allow-origin': '*',
-      'cache-control': upstream.headers['cache-control'] || 'no-store',
+      'cache-control': TILE_CACHE_CONTROL,
       'content-type': contentType,
     });
     upstream.pipe(response);
@@ -361,11 +366,11 @@ function proxyImage(response, upstreamUrl, headers = {}) {
   });
 
   upstreamRequest.on('error', (error) => {
-    sendUpstreamFailure(response, error);
+    sendUpstreamFailure(response, error, context);
   });
 }
 
-function sendUpstreamFailure(response, error) {
+function sendUpstreamFailure(response, error, context = {}) {
   if (response.destroyed || response.writableEnded) return;
   if (response.headersSent) {
     response.destroy(error);
@@ -373,7 +378,54 @@ function sendUpstreamFailure(response, error) {
   }
 
   const statusCode = error.code === 'ETIMEDOUT' ? 504 : 502;
+  recordTileFailure(context, `error=${sanitizeLogToken(error.code || error.name || 'request_failed')}`);
   sendJson(response, statusCode, { error: 'upstream_request_failed', message: error.message });
+}
+
+function recordTileFailure(context, reason) {
+  const provider = sanitizeLogToken(context.provider || 'unknown');
+  const layer = sanitizeLogToken(context.layer || 'unknown');
+  const key = `${provider}/${layer} ${reason}`;
+  tileFailureCounts.set(key, (tileFailureCounts.get(key) || 0) + 1);
+  scheduleTileFailureFlush();
+}
+
+function scheduleTileFailureFlush() {
+  if (tileFailureFlushTimer !== null) return;
+  tileFailureFlushTimer = setTimeout(() => {
+    tileFailureFlushTimer = null;
+    flushTileFailureLog();
+  }, TILE_FAILURE_LOG_INTERVAL_MS);
+  tileFailureFlushTimer.unref?.();
+}
+
+function flushTileFailureLog() {
+  const entry = buildTileFailureLogEntry();
+  if (!entry) return;
+  proxyLogStream.write(entry);
+}
+
+function flushTileFailureLogSync() {
+  const entry = buildTileFailureLogEntry();
+  if (!entry) return;
+  try {
+    fs.appendFileSync(CURRENT_LOG_PATH, entry, 'utf8');
+  } catch {
+    // Process exit logging is best-effort.
+  }
+}
+
+function buildTileFailureLogEntry() {
+  if (!tileFailureCounts.size) return;
+  const entries = [...tileFailureCounts.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, count]) => `${key} count=${count}`);
+  tileFailureCounts.clear();
+  return `[${new Date().toISOString()}] WARN Upstream tile failures: ${entries.join('; ')}\n`;
+}
+
+function sanitizeLogToken(value) {
+  return String(value).replace(/[^a-zA-Z0-9_.=-]/g, '_').slice(0, 80);
 }
 
 function requestJson({ method, url, headers, body }) {
@@ -487,6 +539,10 @@ function createProxyLogStream() {
 }
 
 function registerCriticalErrorHandlers() {
+  process.on('exit', () => {
+    flushTileFailureLogSync();
+  });
+
   process.on('uncaughtException', (error) => {
     logCriticalError('Uncaught exception', error, undefined, { sync: true });
     process.exit(1);

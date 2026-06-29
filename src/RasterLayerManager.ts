@@ -61,6 +61,7 @@ type LayerDefinition = {
   layerId: string;
   providerId: string;
   layerName: 'satellite' | 'terrain' | 'streetview';
+  maxzoom?: number;
   opacity: number;
   visible: boolean;
   attribution?: string;
@@ -196,6 +197,7 @@ export class RasterLayerManager {
       layerId: SATELLITE_LAYER_ID,
       providerId: this.settings.satelliteProvider,
       layerName: 'satellite',
+      maxzoom: this.resolveRasterMaxZoom(this.settings.satelliteProvider),
       opacity: 1,
       visible: this.settings.satelliteEnabled,
       attribution: this.resolveRasterAttribution(this.settings.satelliteProvider),
@@ -206,6 +208,7 @@ export class RasterLayerManager {
       layerId: STREET_VIEW_LAYER_ID,
       providerId: 'streetview',
       layerName: 'streetview',
+      maxzoom: this.resolveRasterMaxZoom('streetview'),
       opacity: 1,
       visible: this.settings.streetViewEnabled,
       attribution: this.resolveRasterAttribution('streetview'),
@@ -249,7 +252,7 @@ export class RasterLayerManager {
       return;
     }
 
-    const sourceKey = `${this.settings.proxyBaseUrl}|${definition.providerId}|${definition.layerName}`;
+    const sourceKey = `${this.settings.proxyBaseUrl}|${definition.providerId}|${definition.layerName}|${definition.maxzoom ?? 'default'}`;
     if (this.lastSourceKeys.get(definition.sourceId) !== sourceKey) {
       this.removeLayer(definition.layerId, definition.sourceId);
       this.lastSourceKeys.set(definition.sourceId, sourceKey);
@@ -260,6 +263,7 @@ export class RasterLayerManager {
         type: 'raster',
         tiles: [this.buildTileUrl(definition.providerId, definition.layerName)],
         tileSize: 256,
+        ...(definition.maxzoom !== undefined ? { maxzoom: definition.maxzoom } : {}),
         attribution: definition.attribution,
       })) {
         return;
@@ -671,13 +675,10 @@ export class RasterLayerManager {
       : typeof candidate?.source?.id === 'string'
         ? candidate.source.id
         : '';
-    if (
+    const isProxySource =
       sourceId === SATELLITE_SOURCE_ID ||
       sourceId === STREET_VIEW_SOURCE_ID ||
-      sourceId === TERRAIN_DEM_SOURCE_ID
-    ) {
-      return true;
-    }
+      sourceId === TERRAIN_DEM_SOURCE_ID;
 
     const proxyTilePrefix = `${this.settings.proxyBaseUrl}/tiles/`;
     const details = [
@@ -689,7 +690,10 @@ export class RasterLayerManager {
       .filter((value): value is string => typeof value === 'string')
       .join('\n');
 
-    return details.includes(proxyTilePrefix);
+    const hasProxyTileReference = details.includes(proxyTilePrefix);
+    if (!isProxySource && !hasProxyTileReference) return false;
+
+    return !isHttpResponseMapError(details);
   }
 
   private isStyleReady(): boolean {
@@ -894,6 +898,11 @@ export class RasterLayerManager {
     return 'Tiles © Google';
   }
 
+  private resolveRasterMaxZoom(providerId: string): number | undefined {
+    if (providerId === 'osm') return 19;
+    return undefined;
+  }
+
   private resolveTerrainSourceProfile(providerId: string): TerrainSourceProfile {
     if (providerId === 'mapterhorn') {
       return {
@@ -911,4 +920,8 @@ export class RasterLayerManager {
       attribution: 'Terrain © MapTiler',
     };
   }
+}
+
+function isHttpResponseMapError(details: string): boolean {
+  return /\b(?:AJAXError|HTTPError)?[^()\n]*\(([4-5]\d{2})\):\s*https?:\/\//.test(details);
 }

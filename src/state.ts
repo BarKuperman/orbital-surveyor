@@ -26,6 +26,7 @@ type Listener = () => void;
 
 const STORAGE_KEY = 'settings';
 const LOCAL_STORAGE_KEY = `${MOD_ID}:${STORAGE_KEY}`;
+const HEALTH_CONFIRM_RETRY_MS = 1000;
 
 export class SurveyorStore {
   private settings: SurveyorSettings = { ...DEFAULT_SETTINGS };
@@ -33,7 +34,9 @@ export class SurveyorStore {
   private proxyError: string | null = null;
   private listeners = new Set<Listener>();
   private healthTimer: number | null = null;
+  private healthRetryTimer: number | null = null;
   private healthPromise: Promise<void> | null = null;
+  private healthFailureCount = 0;
 
   constructor(private readonly api: ModdingAPI) {}
 
@@ -53,6 +56,7 @@ export class SurveyorStore {
       window.clearInterval(this.healthTimer);
       this.healthTimer = null;
     }
+    this.clearHealthRetry();
     this.listeners.clear();
   }
 
@@ -75,7 +79,14 @@ export class SurveyorStore {
   }
 
   async updateSettings(patch: Partial<SurveyorSettings>): Promise<SurveyorSettings> {
+    const previousProxyBaseUrl = this.settings.proxyBaseUrl;
     this.settings = mergeSettings({ ...this.settings, ...patch });
+    if (patch.proxyBaseUrl !== undefined && this.settings.proxyBaseUrl !== previousProxyBaseUrl) {
+      this.healthFailureCount = 0;
+      this.proxyHealth = null;
+      this.proxyError = null;
+      this.clearHealthRetry();
+    }
     this.emit();
     this.saveSettings(this.settings);
     if (patch.proxyBaseUrl !== undefined) {
@@ -116,15 +127,38 @@ export class SurveyorStore {
         signal: controller.signal,
       });
       const payload = await response.json() as ProxyHealth;
+      this.healthFailureCount = 0;
+      this.clearHealthRetry();
       this.proxyHealth = payload;
       this.proxyError = response.ok ? null : `Proxy returned ${response.status}`;
     } catch (error) {
-      this.proxyHealth = null;
-      this.proxyError = error instanceof Error ? error.message : 'Proxy unavailable';
+      const wasReady = isProxyHealthReady(this.proxyHealth, this.proxyError);
+      this.healthFailureCount += 1;
+      if (wasReady && this.healthFailureCount === 1) {
+        this.scheduleHealthRetry();
+      } else {
+        this.proxyHealth = null;
+        this.proxyError = error instanceof Error ? error.message : 'Proxy unavailable';
+        this.clearHealthRetry();
+      }
     } finally {
       window.clearTimeout(timeoutId);
       this.emit();
     }
+  }
+
+  private scheduleHealthRetry(): void {
+    if (this.healthRetryTimer !== null) return;
+    this.healthRetryTimer = window.setTimeout(() => {
+      this.healthRetryTimer = null;
+      void this.refreshProxyHealth();
+    }, HEALTH_CONFIRM_RETRY_MS);
+  }
+
+  private clearHealthRetry(): void {
+    if (this.healthRetryTimer === null) return;
+    window.clearTimeout(this.healthRetryTimer);
+    this.healthRetryTimer = null;
   }
 
   private emit(): void {
@@ -163,6 +197,10 @@ function resolveProxyReason(proxyHealth: ProxyHealth | null, proxyError: string 
   if (proxyError) return proxyError;
   if (!proxyHealth) return 'Checking proxy';
   return proxyHealth.ok && (proxyHealth.ready ?? true) ? 'Ready' : proxyHealth.status;
+}
+
+function isProxyHealthReady(proxyHealth: ProxyHealth | null, proxyError: string | null): boolean {
+  return !proxyError && Boolean(proxyHealth?.ok && (proxyHealth.ready ?? true));
 }
 
 function readLocalSettings(): unknown | null {

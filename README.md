@@ -24,7 +24,7 @@ Subway Builder mod that adds satellite imagery, Street View, and 3D terrain to t
 5. Enable Orbital Surveyor in Subway Builder under Settings > Mods.
 6. Open the Orbital Surveyor panel in-game and enable Satellite, Terrain, or Street View as needed.
 
-The panel includes a proxy status area at the bottom. If the proxy is not reachable, overlay toggles are disabled, active overlay layers are removed, and an in-game warning is shown once per outage. If the proxy comes back during the same map session, previously requested overlays can restore after health becomes ready again.
+The panel includes a proxy status area at the bottom. If the proxy is not reachable after repeated health checks, overlay toggles are disabled, active overlay layers are removed, and an in-game warning is shown once per outage. If the proxy comes back during the same map session, previously requested overlays can restore after health becomes ready again.
 
 ## Optional Setup
 
@@ -83,7 +83,7 @@ The proxy defaults to `http://127.0.0.1:8787` and exposes:
 - `GET /providers`
 - `GET /tiles/:provider/:layer/:z/:x/:y`
 
-`GET /health` returns general proxy readiness (`ok`, `ready`, `status`), provider configuration details, a timestamp, and proxy uptime. It does not test whether every upstream provider is reachable. The mod checks this endpoint before enabling overlays, polls it periodically, and triggers an immediate health check when MapLibre reports failed proxy-backed tile requests.
+`GET /health` returns general proxy readiness (`ok`, `ready`, `status`), provider configuration details, a timestamp, and proxy uptime. It does not test whether every upstream provider is reachable. The mod checks this endpoint before enabling overlays, polls it periodically, and triggers an immediate health check only when MapLibre reports proxy-backed errors that look like local proxy connectivity failures. HTTP tile responses from upstream providers, such as an OSM `502`, are logged by the proxy but do not count as proxy outages.
 
 Provider API keys are read only by `proxy.js` from environment variables or `.env`. The default satellite provider and default terrain provider do not require API keys.
 
@@ -91,6 +91,8 @@ The proxy writes session logs under `logs/` in the mod folder:
 
 - `logs/proxy-current.log`
 - `logs/proxy-previous.log`
+
+Upstream tile failures are aggregated into compact periodic summary lines grouped by provider, layer, and status or request error code. The proxy does not write one log line per failed tile.
 
 ## Mod Development
 
@@ -120,7 +122,7 @@ Built-in provider IDs:
 - `google-hybrid`: Google hybrid raster tiles through the local proxy. No API key required.
 - `google-road`: Google road raster tiles through the local proxy. No API key required.
 - `esri`: Esri World Imagery raster tiles through the local proxy. No API key required.
-- `osm`: OpenStreetMap raster tiles through the local proxy from `https://tile.openstreetmap.org/${z}/${x}/${y}.png`.
+- `osm`: OpenStreetMap raster tiles through the local proxy from `https://tile.openstreetmap.org/${z}/${x}/${y}.png`. The in-game source is capped at zoom 19 so closer views overzoom instead of requesting unsupported z20+ OSM tiles.
 - `mapterhorn`: Default open terrain provider using Terrarium-encoded WebP DEM tiles from `https://tiles.mapterhorn.com/{z}/{x}/{y}.webp`.
 - `maptiler`: Optional MapTiler provider requiring `MAPTILER_API_KEY`; uses `satellite-v4` for imagery and `terrain-rgb-v2` DEM tiles for MapLibre 3D terrain.
 - `google`: Optional Google Map Tiles API satellite tiles requiring `GOOGLE_MAPS_API_KEY`.

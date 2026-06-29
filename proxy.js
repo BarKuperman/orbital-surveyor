@@ -33,7 +33,13 @@ const proxyAgent = new https.Agent({
 const googleSessions = new Map();
 const tileFailureCounts = new Map();
 let tileFailureFlushTimer = null;
-const GOOGLE_XYZ_PROVIDERS = new Set(['google-sat', 'google-hybrid', 'google-road']);
+const GOOGLE_XYZ_PROVIDERS = new Set([
+  'google-sat',
+  'google-hybrid',
+  'google-road',
+  'google-dark',
+  'google-transit',
+]);
 const TILE_TEXT_OFFSET = 17;
 const STREET_VIEW_AVAILABILITY_TILE = buildStreetViewAvailabilityTileConfig();
 const GOOGLE_XYZ_TILE = buildGoogleXyzTileConfig();
@@ -56,6 +62,14 @@ const providers = {
     configured: () => true,
   },
   'google-road': {
+    layers: ['satellite'],
+    configured: () => true,
+  },
+  'google-dark': {
+    layers: ['satellite'],
+    configured: () => true,
+  },
+  'google-transit': {
     layers: ['satellite'],
     configured: () => true,
   },
@@ -229,8 +243,11 @@ function buildGoogleXyzTileConfig() {
     'google-sat': [[132]],
     'google-hybrid': [[138]],
     'google-road': [[126]],
+    'google-dark': [[126]],
+    'google-transit': [[126, 61, 133, 131, 114, 127, 132, 122, 133]],
   };
   const layerParam = decodeTileText([125, 138], [131, 132]);
+  const googleDarkStyle = 's.t%3A0%7Cs.e%3Ag%7Cp.c%3A%23ff1c1c1c%2Cs.t%3A6%7Cs.e%3Ag%7Cp.c%3A%23ff0f203d%2Cs.t%3A40%7Cs.e%3Ag%7Cp.c%3A%23ff193019%2Cs.t%3A81%7Cs.e%3Ag.f%7Cp.c%3A%23ff1c1c1c%2Cs.t%3A81%7Cs.e%3Ag.s%7Cp.c%3A%23ff3d3d3d%2Cs.t%3A66%7Cs.e%3Ag%7Cp.c%3A%23ff2a2b36%2Cs.t%3A65%7Cs.e%3Ag%7Cp.c%3A%23ff3c3f54%2Cs.t%3A3%7Cs.e%3Ag%7Cp.c%3A%23ff282828%2Cs.t%3A0%7Cs.e%3Al%7Cp.v%3Aoff%2Cs.t%3A1%7Cs.e%3Al%7Cp.v%3Aon%2Cs.t%3A1%7Cs.e%3Al.t.f%7Cp.c%3A%23ffe0e0e0%2Cs.t%3A1%7Cs.e%3Al.t.s%7Cp.v%3Aoff%2Cs.t%3A4%7Cs.e%3Al%7Cp.v%3Aon%2Cs.t%3A4%7Cs.e%3Al.t.f%7Cp.c%3A%23ffe0e0e0%2Cs.t%3A4%7Cs.e%3Al.t.s%7Cp.v%3Aoff%2Cs.t%3A66%7Cs.e%3Al%7Cp.v%3Aon%2Cs.t%3A66%7Cs.e%3Al.t.f%7Cp.c%3A%23ffe0e0e0%2Cs.t%3A66%7Cs.e%3Al.t.s%7Cp.v%3Aoff%2Cs.t%3A40%7Cs.e%3Al%7Cp.v%3Aon%2Cs.t%3A40%7Cs.e%3Al.t.f%7Cp.c%3A%23ffe0e0e0%2Cs.t%3A40%7Cs.e%3Al.t.s%7Cp.v%3Aoff%2Cs.t%3A36%7Cs.e%3Al%7Cp.v%3Aon%2Cs.t%3A36%7Cs.e%3Al.t.f%7Cp.c%3A%23ffe0e0e0%2Cs.t%3A36%7Cs.e%3Al.t.s%7Cp.v%3Aoff';
 
   return {
     host: decodeTileText([126, 133, 66, 63], [120, 128, 128, 120, 125], [118, 63, 116, 128, 126]),
@@ -238,7 +255,8 @@ function buildGoogleXyzTileConfig() {
     layerQueries: Object.fromEntries(
       Object.entries(layerCodes).map(([provider, segments]) => {
         const layerToken = decodeTileText(...segments);
-        return [provider, `${layerParam}=${encodeURIComponent(layerToken)}`];
+        const query = `${layerParam}=${encodeURIComponent(layerToken)}`;
+        return [provider, provider === 'google-dark' ? `${query}&apistyle=${googleDarkStyle}` : query];
       }),
     ),
   };

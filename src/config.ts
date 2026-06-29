@@ -63,6 +63,16 @@ export const PROVIDERS: ProviderOption[] = [
     layers: ['satellite'],
   },
   {
+    id: 'google-dark',
+    label: 'Google Dark',
+    layers: ['satellite'],
+  },
+  {
+    id: 'google-transit',
+    label: 'Google Transit',
+    layers: ['satellite'],
+  },
+  {
     id: 'esri',
     label: 'Esri World Imagery',
     layers: ['satellite'],

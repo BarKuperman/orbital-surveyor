@@ -123,6 +123,8 @@ Built-in provider IDs:
 - `google-sat`: Default Google satellite raster tiles through the local proxy. No API key required.
 - `google-hybrid`: Google hybrid raster tiles through the local proxy. No API key required.
 - `google-road`: Google road raster tiles through the local proxy. No API key required.
+- `google-dark`: Google dark road-style raster tiles through the local proxy. No API key required.
+- `google-transit`: Google road and transit raster tiles through the local proxy. No API key required.
 - `esri`: Esri World Imagery raster tiles through the local proxy. No API key required.
 - `osm`: OpenStreetMap raster tiles through the local proxy from `https://tile.openstreetmap.org/${z}/${x}/${y}.png`. The in-game source is capped at zoom 19 so closer views overzoom instead of requesting unsupported z20+ OSM tiles.
 - `mapterhorn`: Default open terrain provider using Terrarium-encoded WebP DEM tiles from `https://tiles.mapterhorn.com/{z}/{x}/{y}.webp`.

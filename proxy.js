@@ -22,6 +22,7 @@ const MAPTILER_API_KEY = process.env.MAPTILER_API_KEY || '';
 const OSM_USER_AGENT = process.env.OSM_USER_AGENT || 'OrbitalSurveyor/1.0 (+https://github.com/BarKuperman/orbital-surveyor)';
 const UPSTREAM_REQUEST_TIMEOUT_MS = 30000;
 const TILE_FAILURE_LOG_INTERVAL_MS = 15000;
+const TILE_CACHE_CONTROL = 'public, max-age=604800, stale-if-error=2592000';
 const proxyAgent = new https.Agent({
   keepAlive: true,
   maxSockets: 64,
@@ -346,7 +347,7 @@ function proxyImage(response, upstreamUrl, headers = {}, context = {}) {
 
     response.writeHead(upstream.statusCode || 200, {
       'access-control-allow-origin': '*',
-      'cache-control': upstream.headers['cache-control'] || 'no-store',
+      'cache-control': TILE_CACHE_CONTROL,
       'content-type': contentType,
     });
     upstream.pipe(response);

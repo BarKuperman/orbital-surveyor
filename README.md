@@ -94,6 +94,8 @@ The proxy writes session logs under `logs/` in the mod folder:
 
 Upstream tile failures are aggregated into compact periodic summary lines grouped by provider, layer, and status or request error code. The proxy does not write one log line per failed tile.
 
+Successful `/tiles/...` image responses use a fixed browser cache policy of `public, max-age=604800, stale-if-error=2592000`, overriding upstream tile cache headers. This lets Electron/MapLibre reuse identical tile URLs for up to 7 days and use stale cached tiles for up to 30 days on fetch errors where supported. The proxy does not store tile files on disk.
+
 ## Mod Development
 
 ```bash

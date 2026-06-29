@@ -53,9 +53,9 @@ Controlled layer IDs:
 
 - Buildings: `buildings-3d`
 - Water: `water`, `ocean-depth-labels`, `general-tiles`
-- Parks: `parks-large`, `parks-small`
+- Parks: `parks-large`, `parks-small`, `parks-modded`
 - Roads: `road-labels`, `intersections-layer`, `road-lines`
-- Airports: `airports`, `runways-taxiways`
+- Airports: `airports`, `runways-taxiways`, `airports-modded`
 - Area labels: `neighborhood-labels`, `suburb-labels`, `city-labels`
 
 Use Reset in the Map layers section to return all controlled layers to the hidden-by-default overlay view.

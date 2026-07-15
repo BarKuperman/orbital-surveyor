@@ -57,8 +57,8 @@ Controlled layer IDs:
 
 - Buildings: `buildings-3d`
 - Water: `water`, `ocean-depth-labels`, `general-tiles`
-- Parks: `parks-large`, `parks-small`, `parks-modded`
-- Roads: `road-labels`, `intersections-layer`, `road-lines`
+- Parks: `parks-large`, `parks-small`, `parks-modded`, `commercial`
+- Roads: `road-labels`, `intersections-layer`, `road-lines`, `road-bridge-casing`, `road-bridge-fill`
 - Airports: `airports`, `runways-taxiways`, `airports-modded`
 - Area labels: `neighborhood-labels`, `suburb-labels`, `city-labels`
 

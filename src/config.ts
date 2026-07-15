@@ -16,8 +16,8 @@ export type ProviderOption = {
 export const CITY_LAYER_GROUPS = [
   { key: 'buildings', label: 'Buildings', layers: ['buildings-3d'] },
   { key: 'water', label: 'Water', layers: ['water', 'ocean-depth-labels', 'general-tiles'] },
-  { key: 'parks', label: 'Parks', layers: ['parks-large', 'parks-small','parks-modded'] },
-  { key: 'roads', label: 'Roads', layers: ['road-labels', 'intersections-layer', 'road-lines'] },
+  { key: 'parks', label: 'Parks', layers: ['parks-large', 'parks-small','parks-modded','commercial'] },
+  { key: 'roads', label: 'Roads', layers: ['road-labels', 'intersections-layer', 'road-lines','road-bridge-casing','road-bridge-fill'] },
   { key: 'airports', label: 'Airports', layers: ['airports','runways-taxiways','airports-modded'] },
   { key: 'areaLabels', label: 'Area labels', layers: ['neighborhood-labels', 'suburb-labels', 'city-labels'] },
 ] as const;

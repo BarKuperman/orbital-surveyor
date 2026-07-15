@@ -198,7 +198,7 @@ export class RasterLayerManager {
       providerId: this.settings.satelliteProvider,
       layerName: 'satellite',
       maxzoom: this.resolveRasterMaxZoom(this.settings.satelliteProvider),
-      opacity: 1,
+      opacity: this.settings.satelliteOpacity,
       visible: this.settings.satelliteEnabled,
       attribution: this.resolveRasterAttribution(this.settings.satelliteProvider),
     });

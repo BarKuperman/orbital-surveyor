@@ -139,6 +139,15 @@ export function SurveyorPanel({ store, onSettingsChange }: Props) {
           options={satelliteProviders}
           onChange={(satelliteProvider) => updateSettings({ satelliteProvider })}
         />
+        <RangeControl
+          label="Opacity"
+          value={snapshot.settings.satelliteOpacity}
+          min={0}
+          max={1}
+          step={0.01}
+          formatValue={(value) => `${Math.round(value * 100)}%`}
+          onChange={(satelliteOpacity) => updateSettings({ satelliteOpacity })}
+        />
       </OverlaySection>
 
       <OverlaySection

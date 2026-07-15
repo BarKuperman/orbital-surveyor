@@ -43,6 +43,10 @@ Add a Google Maps key if you want the Google Map Tiles API provider:
    GOOGLE_MAPS_API_KEY=your_google_maps_key_here
    ```
 
+## Satellite Opacity
+
+The Satellite section includes an opacity slider with 1% adjustments from fully transparent to fully opaque. The selected opacity is saved with the other mod settings and applies to every satellite imagery provider.
+
 ## Map Layer Filtering
 
 The Orbital Surveyor panel is scrollable and includes a Map layers section for controlling built-in game layers while an overlay mode is active.

@@ -511,7 +511,10 @@ function loadCustomProviders() {
   try {
     source = fs.readFileSync(CUSTOM_PROVIDERS_PATH, 'utf8');
   } catch (error) {
-    if (error?.code === 'ENOENT') return [];
+    if (error?.code === 'ENOENT') {
+      logProxyInfo(`[${new Date().toISOString()}] [proxy] No custom-providers.json found; no custom providers loaded.`);
+      return [];
+    }
     logCriticalError('Failed to read custom-providers.json', error);
     return [];
   }
@@ -526,6 +529,17 @@ function loadCustomProviders() {
 
   const { providers: customProviders, errors } = parseCustomProviders(payload, process.env);
   errors.forEach((message) => logCriticalError('Invalid custom provider configuration', new Error(message)));
+  if (customProviders.length === 0) {
+    logProxyInfo(`[${new Date().toISOString()}] [proxy] custom-providers.json loaded with no valid providers.`);
+  } else {
+    const summary = customProviders.map((provider) => ({
+      id: provider.id,
+      label: provider.label,
+      layer: Object.keys(provider.layers)[0],
+      configured: provider.missingEnvironment?.length === 0,
+    }));
+    logProxyInfo(`[${new Date().toISOString()}] [proxy] Loaded custom providers: ${safeJson(summary)}`);
+  }
   return customProviders;
 }
 

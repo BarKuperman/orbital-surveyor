@@ -35,6 +35,7 @@ type Listener = () => void;
 const STORAGE_KEY = 'settings';
 const LOCAL_STORAGE_KEY = `${MOD_ID}:${STORAGE_KEY}`;
 const HEALTH_CONFIRM_RETRY_MS = 1000;
+const BUILTIN_PROVIDER_IDS = new Set(Object.keys(BUILTIN_PROVIDER_CATALOG));
 
 export class SurveyorStore {
   private settings: SurveyorSettings = { ...DEFAULT_SETTINGS };
@@ -46,6 +47,7 @@ export class SurveyorStore {
   private healthRetryTimer: number | null = null;
   private healthPromise: Promise<void> | null = null;
   private healthFailureCount = 0;
+  private customProviderLogSignature: string | null = null;
 
   constructor(private readonly api: ModdingAPI) {}
 
@@ -142,6 +144,7 @@ export class SurveyorStore {
       this.clearHealthRetry();
       this.proxyHealth = payload;
       this.providerCatalog = mergeProviderCatalog(payload.providers);
+      this.logCustomProviderCatalog();
       this.proxyError = response.ok ? null : `Proxy returned ${response.status}`;
     } catch (error) {
       const wasReady = isProxyHealthReady(this.proxyHealth, this.proxyError);
@@ -171,6 +174,29 @@ export class SurveyorStore {
     if (this.healthRetryTimer === null) return;
     window.clearTimeout(this.healthRetryTimer);
     this.healthRetryTimer = null;
+  }
+
+  private logCustomProviderCatalog(): void {
+    const customProviders = Object.values(this.providerCatalog)
+      .filter((provider) => !BUILTIN_PROVIDER_IDS.has(provider.id))
+      .map((provider) => ({
+        id: provider.id,
+        label: provider.label,
+        layers: Object.entries(provider.layers).map(([layer, metadata]) => ({
+          layer,
+          configured: metadata?.configured === true,
+        })),
+      }))
+      .sort((left, right) => left.id.localeCompare(right.id));
+    const signature = JSON.stringify(customProviders);
+    if (signature === this.customProviderLogSignature) return;
+    this.customProviderLogSignature = signature;
+
+    if (customProviders.length === 0) {
+      console.log('[OrbitalSurveyor] Proxy reported no custom providers.');
+      return;
+    }
+    console.log(`[OrbitalSurveyor] Custom providers received from proxy: ${customProviders.map((provider) => provider.id).join(', ')}`);
   }
 
   private emit(): void {

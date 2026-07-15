@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
   BUILTIN_PROVIDERS,
   createProviderCatalog,
+  mergeProviderCatalog,
   parseCustomProviders,
   resolveDefaultProvider,
 } from '../src/providers';
@@ -63,6 +65,11 @@ test('missing environment values retain the provider as unavailable', () => {
   assert.deepEqual(result.errors, []);
   const catalog = createProviderCatalog(result.providers, {});
   assert.equal(catalog['missing-key'].layers.satellite?.configured, false);
+  assert.equal(catalog['missing-key'].layers.satellite?.availabilityReason, 'missing_environment');
+  assert.equal(
+    mergeProviderCatalog(catalog)['missing-key'].layers.satellite?.availabilityReason,
+    'missing_environment',
+  );
 });
 
 test('terrain providers require a supported encoding', () => {
@@ -78,6 +85,12 @@ test('terrain providers require a supported encoding', () => {
 
   assert.match(result.errors[0], /encoding/);
   assert.equal(result.providers.length, 0);
+  assert.deepEqual(result.issues, [{
+    id: 'bad-terrain',
+    label: 'Bad Terrain',
+    layer: 'terrain',
+    reason: 'invalid_configuration',
+  }]);
 });
 
 test('custom providers reject reserved ids, missing XYZ placeholders, and unsafe headers', () => {
@@ -131,4 +144,17 @@ test('saved custom ids survive normalization and unavailable providers suppress 
   assert.equal(settings.satelliteProvider, 'saved-custom');
   assert.equal(effective.satelliteEnabled, false);
   assert.equal(effective.terrainEnabled, true);
+});
+
+test('shipped custom provider examples pass the production validator', () => {
+  const source = readFileSync(new URL('../custom-providers.example.json', import.meta.url), 'utf8');
+  const examples: unknown = JSON.parse(source);
+  const result = parseCustomProviders(examples, {});
+
+  assert.deepEqual(result.errors, []);
+  assert.deepEqual(result.issues, []);
+  assert.deepEqual(result.providers.map((provider) => provider.id), ['custom-esri', 'custom-mapterhorn']);
+  const catalog = createProviderCatalog(result.providers, {});
+  assert.equal(catalog['custom-esri'].layers.satellite?.configured, true);
+  assert.equal(catalog['custom-mapterhorn'].layers.terrain?.configured, true);
 });

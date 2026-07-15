@@ -49,7 +49,9 @@ let tileFailureFlushTimer = null;
 const TILE_TEXT_OFFSET = 17;
 const STREET_VIEW_AVAILABILITY_TILE = buildStreetViewAvailabilityTileConfig();
 const GOOGLE_XYZ_TILE = buildGoogleXyzTileConfig();
-const customProviders = loadCustomProviders();
+const customProviderResult = loadCustomProviders();
+const customProviders = customProviderResult.providers;
+const customProviderIssues = customProviderResult.issues;
 const providerDefinitions = [...BUILTIN_PROVIDERS, ...customProviders];
 const providers = Object.fromEntries(providerDefinitions.map((provider) => [provider.id, provider]));
 const providerCatalog = createProviderCatalog(providerDefinitions, process.env);
@@ -98,7 +100,7 @@ async function handleRequest(request, response) {
   }
 
   if (requestUrl.pathname === '/providers') {
-    sendJson(response, 200, { providers: buildProviderStatus() });
+    sendJson(response, 200, { providers: buildProviderStatus(), providerIssues: customProviderIssues });
     return;
   }
 
@@ -115,15 +117,15 @@ async function handleRequest(request, response) {
 async function handleTile(response, provider, layer, z, x, y) {
   const definition = providers[provider];
   if (!definition) {
-    sendJson(response, 404, { error: 'unknown_provider', provider });
+    sendJson(response, 404, { error: 'unknown_provider', reason: 'invalid_configuration', provider });
     return;
   }
   if (!definition.layers[layer]) {
-    sendJson(response, 400, { error: 'unsupported_layer', provider, layer });
+    sendJson(response, 400, { error: 'unsupported_layer', reason: 'unsupported_layer', provider, layer });
     return;
   }
   if (!providerCatalog[provider]?.layers[layer]?.configured) {
-    sendJson(response, 503, { error: 'provider_not_configured', provider });
+    sendJson(response, 503, { error: 'provider_not_configured', reason: 'missing_environment', provider });
     return;
   }
 
@@ -348,6 +350,7 @@ function proxyImage(response, upstreamUrl, headers = {}, context = {}) {
         upstream.resume();
         sendJson(response, statusCode >= 400 ? statusCode : 502, {
           error: 'upstream_error',
+          reason: 'upstream_unreachable',
           status: statusCode,
         });
         return;
@@ -397,7 +400,11 @@ function sendUpstreamFailure(response, error, context = {}) {
 
   const statusCode = error.code === 'ETIMEDOUT' ? 504 : 502;
   recordTileFailure(context, `error=${sanitizeLogToken(error.code || error.name || 'request_failed')}`);
-  sendJson(response, statusCode, { error: 'upstream_request_failed', message: 'Upstream tile request failed' });
+  sendJson(response, statusCode, {
+    error: 'upstream_request_failed',
+    reason: 'upstream_unreachable',
+    message: 'Upstream tile request failed',
+  });
 }
 
 function recordTileFailure(context, reason) {
@@ -499,6 +506,7 @@ function buildHealth() {
     timestamp: new Date().toISOString(),
     uptimeSeconds: Math.round(process.uptime()),
     providers: providerStatus,
+    providerIssues: customProviderIssues,
   };
 }
 
@@ -513,10 +521,10 @@ function loadCustomProviders() {
   } catch (error) {
     if (error?.code === 'ENOENT') {
       logProxyInfo(`[${new Date().toISOString()}] [proxy] No custom-providers.json found; no custom providers loaded.`);
-      return [];
+      return { providers: [], issues: [] };
     }
     logCriticalError('Failed to read custom-providers.json', error);
-    return [];
+    return { providers: [], issues: [] };
   }
 
   let payload;
@@ -524,10 +532,10 @@ function loadCustomProviders() {
     payload = JSON.parse(source);
   } catch (error) {
     logCriticalError('Failed to parse custom-providers.json', error);
-    return [];
+    return { providers: [], issues: [] };
   }
 
-  const { providers: customProviders, errors } = parseCustomProviders(payload, process.env);
+  const { providers: customProviders, errors, issues } = parseCustomProviders(payload, process.env);
   errors.forEach((message) => logCriticalError('Invalid custom provider configuration', new Error(message)));
   if (customProviders.length === 0) {
     logProxyInfo(`[${new Date().toISOString()}] [proxy] custom-providers.json loaded with no valid providers.`);
@@ -540,7 +548,7 @@ function loadCustomProviders() {
     }));
     logProxyInfo(`[${new Date().toISOString()}] [proxy] Loaded custom providers: ${safeJson(summary)}`);
   }
-  return customProviders;
+  return { providers: customProviders, issues };
 }
 
 function setCorsHeaders(response) {

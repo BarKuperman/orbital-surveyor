@@ -7,7 +7,14 @@ import {
   type SurveyorSettings,
 } from '../config';
 import { resolveSelectedProviderAvailability, type SurveyorSnapshot, type SurveyorStore } from '../state';
-import { isProviderLayerConfigured, type ProviderCatalog, type SelectableProviderLayer } from '../providers';
+import {
+  formatProviderAvailabilityReason,
+  isProviderLayerConfigured,
+  type ProviderAvailabilityReason,
+  type ProviderCatalog,
+  type ProviderIssue,
+  type SelectableProviderLayer,
+} from '../providers';
 
 const api = window.SubwayBuilderAPI;
 type Component = (props: Record<string, unknown>) => unknown;
@@ -50,11 +57,13 @@ export function SurveyorPanel({ store, onSettingsChange }: Props) {
     snapshot.providerCatalog,
     'satellite',
     snapshot.settings.satelliteProvider,
+    snapshot.proxyHealth?.providerIssues,
   );
   const terrainProviders = filterProviders(
     snapshot.providerCatalog,
     'terrain',
     snapshot.settings.terrainProvider,
+    snapshot.proxyHealth?.providerIssues,
   );
   const proxyStatus = formatProxyStatus(snapshot);
   const proxyReady = proxyStatus.ok;
@@ -440,7 +449,12 @@ function ProviderSelect({
 }: {
   label: string;
   value: string;
-  options: Array<{ id: string; label: string; configured: boolean }>;
+  options: Array<{
+    id: string;
+    label: string;
+    configured: boolean;
+    availabilityReason?: ProviderAvailabilityReason;
+  }>;
   onChange: (value: string) => void;
 }) {
   return (
@@ -451,16 +465,23 @@ function ProviderSelect({
         value={value}
         onChange={(event: { target: { value: string } }) => onChange(event.target.value)}
       >
-        {options.map((provider) => (
-          <option
-            key={provider.id}
-            value={provider.id}
-            label={provider.configured ? provider.label : `${provider.label} (unavailable)`}
-            disabled={!provider.configured}
-          >
-            {provider.configured ? provider.label : `${provider.label} (unavailable)`}
-          </option>
-        ))}
+        {options.map((provider) => {
+          const displayLabel = provider.configured
+            ? provider.label
+            : `${provider.label} (${formatProviderAvailabilityReason(
+              provider.availabilityReason ?? 'provider_unavailable',
+            )})`;
+          return (
+            <option
+              key={provider.id}
+              value={provider.id}
+              label={displayLabel}
+              disabled={!provider.configured}
+            >
+              {displayLabel}
+            </option>
+          );
+        })}
       </select>
     </div>
   );
@@ -510,16 +531,37 @@ function filterProviders(
   catalog: ProviderCatalog,
   layer: SelectableProviderLayer,
   selectedId: string,
-): Array<{ id: string; label: string; configured: boolean }> {
+  providerIssues: ProviderIssue[] = [],
+): Array<{
+  id: string;
+  label: string;
+  configured: boolean;
+  availabilityReason?: ProviderAvailabilityReason;
+}> {
   const options = Object.values(catalog)
     .filter((provider) => provider.selectable && provider.layers[layer])
     .map((provider) => ({
       id: provider.id,
       label: provider.label,
       configured: provider.layers[layer]?.configured === true,
+      availabilityReason: provider.layers[layer]?.availabilityReason,
     }));
+  for (const issue of providerIssues) {
+    if (issue.layer !== layer || options.some((provider) => provider.id === issue.id)) continue;
+    options.push({
+      id: issue.id,
+      label: issue.label,
+      configured: false,
+      availabilityReason: issue.reason,
+    });
+  }
   if (!options.some((provider) => provider.id === selectedId)) {
-    options.push({ id: selectedId, label: selectedId, configured: false });
+    options.push({
+      id: selectedId,
+      label: selectedId,
+      configured: false,
+      availabilityReason: 'provider_unavailable',
+    });
   }
   return options;
 }

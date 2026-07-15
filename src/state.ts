@@ -1,9 +1,12 @@
 import { DEFAULT_SETTINGS, MOD_ID, mergeSettings, type SurveyorSettings } from './config';
 import {
   BUILTIN_PROVIDER_CATALOG,
+  formatProviderAvailabilityReason,
   isProviderLayerConfigured,
   mergeProviderCatalog,
+  normalizeProviderIssues,
   type ProviderCatalog,
+  type ProviderIssue,
   type SelectableProviderLayer,
 } from './providers';
 import type { ModdingAPI } from './types/api';
@@ -15,6 +18,7 @@ export type ProxyHealth = {
   timestamp?: string;
   uptimeSeconds?: number;
   providers: ProviderCatalog;
+  providerIssues?: ProviderIssue[];
 };
 
 export type SurveyorSnapshot = {
@@ -140,6 +144,7 @@ export class SurveyorStore {
         signal: controller.signal,
       });
       const payload = await response.json() as ProxyHealth;
+      payload.providerIssues = normalizeProviderIssues(payload.providerIssues);
       this.healthFailureCount = 0;
       this.clearHealthRetry();
       this.proxyHealth = payload;
@@ -232,10 +237,27 @@ export function resolveSelectedProviderAvailability(
     ? snapshot.settings.satelliteProvider
     : snapshot.settings.terrainProvider;
   const provider = snapshot.providerCatalog[providerId];
-  if (!provider?.layers[layer]?.configured) {
+  if (!provider) {
+    const issue = snapshot.proxyHealth?.providerIssues?.find((candidate) => (
+      candidate.id === providerId && candidate.layer === layer
+    ));
     return {
       ready: false,
-      reason: provider ? `${provider.label} is not configured` : `Provider "${providerId}" is unavailable`,
+      reason: issue
+        ? `${issue.label}: ${formatProviderAvailabilityReason(issue.reason)}`
+        : `Provider "${providerId}" is unavailable`,
+    };
+  }
+  const providerLayer = provider.layers[layer];
+  if (!providerLayer) {
+    return { ready: false, reason: `${provider.label}: ${formatProviderAvailabilityReason('unsupported_layer')}` };
+  }
+  if (!providerLayer.configured) {
+    return {
+      ready: false,
+      reason: `${provider.label}: ${formatProviderAvailabilityReason(
+        providerLayer.availabilityReason ?? 'invalid_configuration',
+      )}`,
     };
   }
   return { ready: true, reason: 'Ready' };

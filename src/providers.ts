@@ -1,6 +1,12 @@
 export type ProviderLayer = 'satellite' | 'terrain' | 'availability';
 export type SelectableProviderLayer = 'satellite' | 'terrain';
 export type TerrainEncoding = 'mapbox' | 'terrarium';
+export type ProviderAvailabilityReason =
+  | 'missing_environment'
+  | 'invalid_configuration'
+  | 'unsupported_layer'
+  | 'upstream_unreachable'
+  | 'provider_unavailable';
 
 export type ProviderLayerMetadata = {
   attribution: string;
@@ -11,6 +17,14 @@ export type ProviderLayerMetadata = {
 
 export type ProviderCatalogLayer = ProviderLayerMetadata & {
   configured: boolean;
+  availabilityReason?: ProviderAvailabilityReason;
+};
+
+export type ProviderIssue = {
+  id: string;
+  label: string;
+  layer: SelectableProviderLayer;
+  reason: 'invalid_configuration';
 };
 
 export type ProviderCatalogEntry = {
@@ -177,7 +191,11 @@ export function createProviderCatalog(
     const layers = Object.fromEntries(
       Object.entries(provider.layers).map(([layer, metadata]) => [
         layer,
-        { ...metadata, configured },
+        {
+          ...metadata,
+          configured,
+          ...(!configured ? { availabilityReason: 'missing_environment' as const } : {}),
+        },
       ]),
     ) as ProviderCatalogEntry['layers'];
     return [provider.id, {
@@ -220,26 +238,60 @@ export function parseCustomProviders(
   value: unknown,
   environment: Record<string, string | undefined>,
   reservedIds: ReadonlySet<string> = new Set(BUILTIN_PROVIDERS.map((provider) => provider.id)),
-): { providers: ProviderDefinition[]; errors: string[] } {
+): { providers: ProviderDefinition[]; errors: string[]; issues: ProviderIssue[] } {
   if (!Array.isArray(value)) {
-    return { providers: [], errors: ['custom-providers.json must contain a JSON array'] };
+    return { providers: [], errors: ['custom-providers.json must contain a JSON array'], issues: [] };
   }
 
   const providers: ProviderDefinition[] = [];
   const errors: string[] = [];
+  const issues: ProviderIssue[] = [];
   const seenIds = new Set(reservedIds);
+  const seenIssueIds = new Set<string>();
 
   value.forEach((entry, index) => {
     const result = parseCustomProvider(entry, index, environment, seenIds);
     if ('error' in result) {
       errors.push(result.error);
+      const issue = normalizeCustomProviderIssue(entry, seenIds);
+      if (issue && !seenIssueIds.has(issue.id)) {
+        issues.push(issue);
+        seenIssueIds.add(issue.id);
+      }
       return;
     }
     providers.push(result.provider);
     seenIds.add(result.provider.id);
   });
 
-  return { providers, errors };
+  return { providers, errors, issues };
+}
+
+export function normalizeProviderIssues(value: unknown): ProviderIssue[] {
+  if (!Array.isArray(value)) return [];
+  const issues: ProviderIssue[] = [];
+  const seenIds = new Set<string>();
+  for (const rawIssue of value) {
+    if (!rawIssue || typeof rawIssue !== 'object' || Array.isArray(rawIssue)) continue;
+    const issue = rawIssue as Record<string, unknown>;
+    if (typeof issue.id !== 'string' || !PROVIDER_ID_PATTERN.test(issue.id) || seenIds.has(issue.id)) continue;
+    if (typeof issue.label !== 'string' || !issue.label.trim()) continue;
+    if (issue.layer !== 'satellite' && issue.layer !== 'terrain') continue;
+    if (issue.reason !== 'invalid_configuration') continue;
+    issues.push({ id: issue.id, label: issue.label.trim(), layer: issue.layer, reason: issue.reason });
+    seenIds.add(issue.id);
+  }
+  return issues;
+}
+
+export function formatProviderAvailabilityReason(reason: ProviderAvailabilityReason): string {
+  switch (reason) {
+    case 'missing_environment': return 'Missing API key';
+    case 'invalid_configuration': return 'Invalid configuration';
+    case 'unsupported_layer': return 'Unsupported layer';
+    case 'upstream_unreachable': return 'Upstream unreachable';
+    case 'provider_unavailable': return 'Provider unavailable';
+  }
 }
 
 function parseCustomProvider(
@@ -319,6 +371,16 @@ function parseCustomProvider(
       },
     },
   };
+}
+
+function normalizeCustomProviderIssue(value: unknown, seenIds: ReadonlySet<string>): ProviderIssue | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const input = value as Record<string, unknown>;
+  const id = typeof input.id === 'string' ? input.id.trim() : '';
+  const label = typeof input.label === 'string' ? input.label.trim() : '';
+  if (!PROVIDER_ID_PATTERN.test(id) || seenIds.has(id) || !label) return null;
+  if (input.layer !== 'satellite' && input.layer !== 'terrain') return null;
+  return { id, label, layer: input.layer, reason: 'invalid_configuration' };
 }
 
 function normalizeEnvironmentBindings(
@@ -407,6 +469,11 @@ function normalizeCatalogEntry(id: string, value: unknown): ProviderCatalogEntry
       attribution: metadata.attribution,
       tileSize: metadata.tileSize,
       configured: metadata.configured,
+      ...(
+        !metadata.configured && metadata.availabilityReason === 'missing_environment'
+          ? { availabilityReason: metadata.availabilityReason }
+          : {}
+      ),
       ...(typeof metadata.maxZoom === 'number' ? { maxZoom: metadata.maxZoom } : {}),
       ...(layer === 'terrain' ? { encoding: metadata.encoding as TerrainEncoding } : {}),
     };

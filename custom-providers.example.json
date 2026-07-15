@@ -1,0 +1,20 @@
+[
+  {
+    "id": "custom-esri",
+    "label": "Esri World Imagery (Custom)",
+    "layer": "satellite",
+    "url": "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    "attribution": "Tiles © Esri",
+    "tileSize": 256
+  },
+  {
+    "id": "custom-mapterhorn",
+    "label": "Mapterhorn (Custom)",
+    "layer": "terrain",
+    "url": "https://tiles.mapterhorn.com/{z}/{x}/{y}.webp",
+    "attribution": "Terrain © Mapterhorn",
+    "tileSize": 512,
+    "maxZoom": 17,
+    "encoding": "terrarium"
+  }
+]

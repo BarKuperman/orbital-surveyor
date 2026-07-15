@@ -3,11 +3,17 @@ import https from 'node:https';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  BUILTIN_PROVIDERS,
+  createProviderCatalog,
+  parseCustomProviders,
+} from './src/providers.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const LOG_DIR = path.join(__dirname, 'logs');
 const CURRENT_LOG_PATH = path.join(LOG_DIR, 'proxy-current.log');
 const PREVIOUS_LOG_PATH = path.join(LOG_DIR, 'proxy-previous.log');
+const CUSTOM_PROVIDERS_PATH = path.join(__dirname, 'custom-providers.json');
 
 ensureProxyLogDirectory();
 rotateProxyLogs();
@@ -21,9 +27,16 @@ const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY || '';
 const MAPTILER_API_KEY = process.env.MAPTILER_API_KEY || '';
 const OSM_USER_AGENT = process.env.OSM_USER_AGENT || 'OrbitalSurveyor/1.0 (+https://github.com/BarKuperman/orbital-surveyor)';
 const UPSTREAM_REQUEST_TIMEOUT_MS = 30000;
+const MAX_UPSTREAM_REDIRECTS = 5;
 const TILE_FAILURE_LOG_INTERVAL_MS = 15000;
 const TILE_CACHE_CONTROL = 'public, max-age=604800, stale-if-error=2592000';
 const proxyAgent = new https.Agent({
+  keepAlive: true,
+  maxSockets: 64,
+  maxFreeSockets: 16,
+  timeout: UPSTREAM_REQUEST_TIMEOUT_MS,
+});
+const proxyHttpAgent = new http.Agent({
   keepAlive: true,
   maxSockets: 64,
   maxFreeSockets: 16,
@@ -33,67 +46,15 @@ const proxyAgent = new https.Agent({
 const googleSessions = new Map();
 const tileFailureCounts = new Map();
 let tileFailureFlushTimer = null;
-const GOOGLE_XYZ_PROVIDERS = new Set([
-  'google-sat',
-  'google-hybrid',
-  'google-road',
-  'google-dark',
-  'google-transit',
-]);
 const TILE_TEXT_OFFSET = 17;
 const STREET_VIEW_AVAILABILITY_TILE = buildStreetViewAvailabilityTileConfig();
 const GOOGLE_XYZ_TILE = buildGoogleXyzTileConfig();
-
-const providers = {
-  streetview: {
-    layers: ['availability'],
-    configured: () => true,
-  },
-  esri: {
-    layers: ['satellite'],
-    configured: () => true,
-  },
-  'google-sat': {
-    layers: ['satellite'],
-    configured: () => true,
-  },
-  'google-hybrid': {
-    layers: ['satellite'],
-    configured: () => true,
-  },
-  'google-road': {
-    layers: ['satellite'],
-    configured: () => true,
-  },
-  'google-dark': {
-    layers: ['satellite'],
-    configured: () => true,
-  },
-  'google-transit': {
-    layers: ['satellite'],
-    configured: () => true,
-  },
-  osm: {
-    layers: ['satellite'],
-    configured: () => true,
-  },
-  google: {
-    layers: ['satellite', 'terrain'],
-    configured: () => Boolean(GOOGLE_MAPS_API_KEY),
-  },
-  maptiler: {
-    layers: ['satellite', 'terrain'],
-    configured: () => Boolean(MAPTILER_API_KEY),
-  },
-  mapterhorn: {
-    layers: ['terrain'],
-    configured: () => true,
-  },
-  custom: {
-    layers: ['satellite', 'terrain'],
-    configured: () => Boolean(process.env.CUSTOM_SATELLITE_URL || process.env.CUSTOM_TERRAIN_URL),
-  },
-};
+const customProviderResult = loadCustomProviders();
+const customProviders = customProviderResult.providers;
+const customProviderIssues = customProviderResult.issues;
+const providerDefinitions = [...BUILTIN_PROVIDERS, ...customProviders];
+const providers = Object.fromEntries(providerDefinitions.map((provider) => [provider.id, provider]));
+const providerCatalog = createProviderCatalog(providerDefinitions, process.env);
 
 const server = http.createServer((request, response) => {
   void handleRequest(request, response).catch((error) => {
@@ -139,7 +100,7 @@ async function handleRequest(request, response) {
   }
 
   if (requestUrl.pathname === '/providers') {
-    sendJson(response, 200, { providers: buildProviderStatus() });
+    sendJson(response, 200, { providers: buildProviderStatus(), providerIssues: customProviderIssues });
     return;
   }
 
@@ -154,72 +115,64 @@ async function handleRequest(request, response) {
 }
 
 async function handleTile(response, provider, layer, z, x, y) {
-  if (!providers[provider]) {
-    sendJson(response, 404, { error: 'unknown_provider', provider });
+  const definition = providers[provider];
+  if (!definition) {
+    sendJson(response, 404, { error: 'unknown_provider', reason: 'invalid_configuration', provider });
     return;
   }
-  if (!providers[provider].layers.includes(layer)) {
-    sendJson(response, 400, { error: 'unsupported_layer', provider, layer });
+  if (!definition.layers[layer]) {
+    sendJson(response, 400, { error: 'unsupported_layer', reason: 'unsupported_layer', provider, layer });
     return;
   }
-  if (!providers[provider].configured()) {
-    sendJson(response, 503, { error: 'provider_not_configured', provider });
+  if (!providerCatalog[provider]?.layers[layer]?.configured) {
+    sendJson(response, 503, { error: 'provider_not_configured', reason: 'missing_environment', provider });
     return;
   }
 
-  const upstreamUrl = await resolveTileUrl(provider, layer, z, x, y);
-  proxyImage(response, upstreamUrl, getTileRequestHeaders(provider, layer), { provider, layer });
+  const upstreamUrl = await resolveTileUrl(definition, layer, z, x, y);
+  proxyImage(response, upstreamUrl, getTileRequestHeaders(definition), { provider, layer });
 }
 
 async function resolveTileUrl(provider, layer, z, x, y) {
-  if (provider === 'streetview' && layer === 'availability') {
+  const resolver = provider.resolver;
+  if (resolver.kind === 'streetview-availability') {
     return resolveStreetViewAvailabilityUrl(z, x, y);
   }
-
-  if (GOOGLE_XYZ_PROVIDERS.has(provider)) {
-    return resolveGoogleXyzTileUrl(provider, z, x, y);
+  if (resolver.kind === 'google-xyz') {
+    return resolveGoogleXyzTileUrl(resolver.variant, z, x, y);
   }
-
-  if (provider === 'google') {
-    const session = await getGoogleSession(layer);
+  if (resolver.kind === 'google-map-tiles') {
+    const session = await getGoogleSession();
     return `https://tile.googleapis.com/v1/2dtiles/${z}/${x}/${y}?session=${encodeURIComponent(session)}&key=${encodeURIComponent(GOOGLE_MAPS_API_KEY)}`;
   }
-
-  if (provider === 'maptiler') {
+  if (resolver.kind === 'maptiler') {
     const target = resolveMapTilerTarget(layer);
     return `https://api.maptiler.com/${target.kind}/${encodeURIComponent(target.id)}/${z}/${x}/${y}.${target.format}?key=${encodeURIComponent(MAPTILER_API_KEY)}`;
   }
-
-  if (provider === 'mapterhorn') {
+  if (resolver.kind === 'mapterhorn') {
     return `${process.env.MAPTERHORN_TILE_URL || 'https://tiles.mapterhorn.com'}/${z}/${x}/${y}.webp`;
   }
-
-  if (provider === 'esri') {
+  if (resolver.kind === 'esri') {
     return `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`;
   }
-
-  if (provider === 'osm') {
+  if (resolver.kind === 'osm') {
     return `https://tile.openstreetmap.org/${z}/${x}/${y}.png`;
   }
-
-  const template = layer === 'satellite'
-    ? process.env.CUSTOM_SATELLITE_URL
-    : process.env.CUSTOM_TERRAIN_URL;
-  if (!template) {
-    throw new Error(`Missing custom ${layer} URL template`);
+  if (resolver.kind === 'custom-template') {
+    return resolver.urlTemplate
+      .replaceAll('{z}', z)
+      .replaceAll('{x}', x)
+      .replaceAll('{y}', y);
   }
-  return template
-    .replaceAll('{z}', z)
-    .replaceAll('{x}', x)
-    .replaceAll('{y}', y);
+  throw new Error(`Unsupported resolver for provider ${provider.id}`);
 }
 
 function resolveStreetViewAvailabilityUrl(z, x, y) {
-  return `https://${STREET_VIEW_AVAILABILITY_TILE.host}/${STREET_VIEW_AVAILABILITY_TILE.pathName}?hl=en-US&lyrs=${STREET_VIEW_AVAILABILITY_TILE.layerToken}&style=${STREET_VIEW_AVAILABILITY_TILE.styleValue}&x=${encodeURIComponent(x)}&y=${encodeURIComponent(y)}&z=${encodeURIComponent(z)}`;
+  return `https://${STREET_VIEW_AVAILABILITY_TILE.host}/${STREET_VIEW_AVAILABILITY_TILE.pathName}?hl=en-US&${STREET_VIEW_AVAILABILITY_TILE.layerParam}=${STREET_VIEW_AVAILABILITY_TILE.layerToken}&style=${STREET_VIEW_AVAILABILITY_TILE.styleValue}&x=${encodeURIComponent(x)}&y=${encodeURIComponent(y)}&z=${encodeURIComponent(z)}`;
 }
 
-function resolveGoogleXyzTileUrl(provider, z, x, y) {
-  return `https://${GOOGLE_XYZ_TILE.host}/${GOOGLE_XYZ_TILE.pathName}?${GOOGLE_XYZ_TILE.layerQueries[provider]}&x=${x}&y=${y}&z=${z}`;
+function resolveGoogleXyzTileUrl(variant, z, x, y) {
+  return `https://${GOOGLE_XYZ_TILE.host}/${GOOGLE_XYZ_TILE.pathName}?${GOOGLE_XYZ_TILE.layerQueries[variant]}&x=${x}&y=${y}&z=${z}`;
 }
 
 function decodeTileText(...segments) {
@@ -233,6 +186,7 @@ function buildStreetViewAvailabilityTileConfig() {
   return {
     host: decodeTileText([126, 133, 132, 66, 63], [120, 128, 128, 120, 125, 118, 114], [129, 122, 132, 63, 116, 128, 126]),
     pathName: decodeTileText([135], [133]),
+    layerParam: decodeTileText([125, 138], [131, 132]),
     layerToken: decodeTileText([132, 135, 135, 141, 116], [115, 112, 116, 125, 122], [118, 127, 133, 75, 114, 129, 122, 135, 68]),
     styleValue: decodeTileText([69, 65], [61], [66, 73]),
   };
@@ -240,23 +194,26 @@ function buildStreetViewAvailabilityTileConfig() {
 
 function buildGoogleXyzTileConfig() {
   const layerCodes = {
-    'google-sat': [[132]],
-    'google-hybrid': [[138]],
-    'google-road': [[126]],
-    'google-dark': [[126]],
-    'google-transit': [[126, 61, 133, 131, 114, 127, 132, 122, 133]],
+    satellite: [[132]],
+    hybrid: [[138]],
+    road: [[126]],
+    dark: [[126]],
+    transit: [[126, 61, 133, 131, 114, 127, 132, 122, 133]],
   };
   const layerParam = decodeTileText([125, 138], [131, 132]);
-  const googleDarkStyle = 's.t%3A0%7Cs.e%3Ag%7Cp.c%3A%23ff1c1c1c%2Cs.t%3A6%7Cs.e%3Ag%7Cp.c%3A%23ff0f203d%2Cs.t%3A40%7Cs.e%3Ag%7Cp.c%3A%23ff193019%2Cs.t%3A81%7Cs.e%3Ag.f%7Cp.c%3A%23ff1c1c1c%2Cs.t%3A81%7Cs.e%3Ag.s%7Cp.c%3A%23ff3d3d3d%2Cs.t%3A66%7Cs.e%3Ag%7Cp.c%3A%23ff2a2b36%2Cs.t%3A65%7Cs.e%3Ag%7Cp.c%3A%23ff3c3f54%2Cs.t%3A3%7Cs.e%3Ag%7Cp.c%3A%23ff282828%2Cs.t%3A0%7Cs.e%3Al%7Cp.v%3Aoff%2Cs.t%3A1%7Cs.e%3Al%7Cp.v%3Aon%2Cs.t%3A1%7Cs.e%3Al.t.f%7Cp.c%3A%23ffe0e0e0%2Cs.t%3A1%7Cs.e%3Al.t.s%7Cp.v%3Aoff%2Cs.t%3A4%7Cs.e%3Al%7Cp.v%3Aon%2Cs.t%3A4%7Cs.e%3Al.t.f%7Cp.c%3A%23ffe0e0e0%2Cs.t%3A4%7Cs.e%3Al.t.s%7Cp.v%3Aoff%2Cs.t%3A66%7Cs.e%3Al%7Cp.v%3Aon%2Cs.t%3A66%7Cs.e%3Al.t.f%7Cp.c%3A%23ffe0e0e0%2Cs.t%3A66%7Cs.e%3Al.t.s%7Cp.v%3Aoff%2Cs.t%3A40%7Cs.e%3Al%7Cp.v%3Aon%2Cs.t%3A40%7Cs.e%3Al.t.f%7Cp.c%3A%23ffe0e0e0%2Cs.t%3A40%7Cs.e%3Al.t.s%7Cp.v%3Aoff%2Cs.t%3A36%7Cs.e%3Al%7Cp.v%3Aon%2Cs.t%3A36%7Cs.e%3Al.t.f%7Cp.c%3A%23ffe0e0e0%2Cs.t%3A36%7Cs.e%3Al.t.s%7Cp.v%3Aoff';
+  const googleDarkStyle = Buffer.from(
+    'cy50JTNBMCU3Q3MuZSUzQWclN0NwLmMlM0ElMjNmZjFjMWMxYyUyQ3MudCUzQTYlN0NzLmUlM0FnJTdDcC5jJTNBJTIzZmYwZjIwM2QlMkNzLnQlM0E0MCU3Q3MuZSUzQWclN0NwLmMlM0ElMjNmZjE5MzAxOSUyQ3MudCUzQTgxJTdDcy5lJTNBZy5mJTdDcC5jJTNBJTIzZmYxYzFjMWMlMkNzLnQlM0E4MSU3Q3MuZSUzQWcucyU3Q3AuYyUzQSUyM2ZmM2QzZDNkJTJDcy50JTNBNjYlN0NzLmUlM0FnJTdDcC5jJTNBJTIzZmYyYTJiMzYlMkNzLnQlM0E2NSU3Q3MuZSUzQWclN0NwLmMlM0ElMjNmZjNjM2Y1NCUyQ3MudCUzQTMlN0NzLmUlM0FnJTdDcC5jJTNBJTIzZmYyODI4MjglMkNzLnQlM0EwJTdDcy5lJTNBbCU3Q3AudiUzQW9mZiUyQ3MudCUzQTElN0NzLmUlM0FsJTdDcC52JTNBb24lMkNzLnQlM0ExJTdDcy5lJTNBbC50LmYlN0NwLmMlM0ElMjNmZmUwZTBlMCUyQ3MudCUzQTElN0NzLmUlM0FsLnQucyU3Q3AudiUzQW9mZiUyQ3MudCUzQTQlN0NzLmUlM0FsJTdDcC52JTNBb24lMkNzLnQlM0E0JTdDcy5lJTNBbC50LmYlN0NwLmMlM0ElMjNmZmUwZTBlMCUyQ3MudCUzQTQlN0NzLmUlM0FsLnQucyU3Q3AudiUzQW9mZiUyQ3MudCUzQTY2JTdDcy5lJTNBbCU3Q3AudiUzQW9uJTJDcy50JTNBNjYlN0NzLmUlM0FsLnQuZiU3Q3AuYyUzQSUyM2ZmZTBlMGUwJTJDcy50JTNBNjYlN0NzLmUlM0FsLnQucyU3Q3AudiUzQW9mZiUyQ3MudCUzQTQwJTdDcy5lJTNBbCU3Q3AudiUzQW9uJTJDcy50JTNBNDAlN0NzLmUlM0FsLnQuZiU3Q3AuYyUzQSUyM2ZmZTBlMGUwJTJDcy50JTNBNDAlN0NzLmUlM0FsLnQucyU3Q3AudiUzQW9mZiUyQ3MudCUzQTM2JTdDcy5lJTNBbCU3Q3AudiUzQW9uJTJDcy50JTNBMzYlN0NzLmUlM0FsLnQuZiU3Q3AuYyUzQSUyM2ZmZTBlMGUwJTJDcy50JTNBMzYlN0NzLmUlM0FsLnQucyU3Q3AudiUzQW9mZg==',
+    'base64',
+  ).toString('utf8');
 
   return {
     host: decodeTileText([126, 133, 66, 63], [120, 128, 128, 120, 125], [118, 63, 116, 128, 126]),
     pathName: decodeTileText([135], [133]),
     layerQueries: Object.fromEntries(
-      Object.entries(layerCodes).map(([provider, segments]) => {
+      Object.entries(layerCodes).map(([variant, segments]) => {
         const layerToken = decodeTileText(...segments);
         const query = `${layerParam}=${encodeURIComponent(layerToken)}`;
-        return [provider, provider === 'google-dark' ? `${query}&apistyle=${googleDarkStyle}` : query];
+        return [variant, variant === 'dark' ? `${query}&apistyle=${googleDarkStyle}` : query];
       }),
     ),
   };
@@ -277,16 +234,19 @@ function resolveMapTilerTarget(layer) {
   return { kind: 'tiles', id: id === 'terrain' ? 'terrain-rgb-v2' : id, format };
 }
 
-function getTileRequestHeaders(provider, layer) {
-  if (provider === 'osm') {
+function getTileRequestHeaders(provider) {
+  if (provider.resolver.kind === 'custom-template') {
+    return provider.resolver.headers;
+  }
+  if (provider.resolver.kind === 'osm') {
     return {
       'user-agent': OSM_USER_AGENT,
     };
   }
 
   if (
-    !(provider === 'streetview' && layer === 'availability') &&
-    !GOOGLE_XYZ_PROVIDERS.has(provider)
+    provider.resolver.kind !== 'streetview-availability' &&
+    provider.resolver.kind !== 'google-xyz'
   ) {
     return {};
   }
@@ -302,14 +262,15 @@ function getTileRequestHeaders(provider, layer) {
   };
 }
 
-async function getGoogleSession(layer) {
+async function getGoogleSession() {
+  const layer = 'satellite';
   const cached = googleSessions.get(layer);
   if (cached && cached.expiresAt > Date.now() + 60000) {
     return cached.session;
   }
 
   const body = JSON.stringify({
-    mapType: layer === 'terrain' ? 'terrain' : 'satellite',
+    mapType: 'satellite',
     language: process.env.GOOGLE_MAP_LANGUAGE || 'en-US',
     region: process.env.GOOGLE_MAP_REGION || 'US',
   });
@@ -337,55 +298,97 @@ async function getGoogleSession(layer) {
 }
 
 function proxyImage(response, upstreamUrl, headers = {}, context = {}) {
+  let activeRequest = null;
   let upstreamResponse = null;
-  const upstreamRequest = https.get(upstreamUrl, { agent: proxyAgent, headers }, (upstream) => {
-    upstreamResponse = upstream;
-    upstream.on('error', (error) => {
+  const requestUpstream = (url, requestHeaders, redirectCount) => {
+    const parsedUrl = new URL(url);
+    const client = parsedUrl.protocol === 'http:' ? http : https;
+    const agent = parsedUrl.protocol === 'http:' ? proxyHttpAgent : proxyAgent;
+    const upstreamRequest = client.get(parsedUrl, { agent, headers: requestHeaders }, (upstream) => {
+      upstreamResponse = upstream;
+      upstream.on('error', (error) => {
+        sendUpstreamFailure(response, error, context);
+      });
+
+      const statusCode = upstream.statusCode || 500;
+      if ([301, 302, 303, 307, 308].includes(statusCode)) {
+        const location = upstream.headers.location;
+        upstream.resume();
+        if (!location || redirectCount >= MAX_UPSTREAM_REDIRECTS) {
+          const error = new Error(location ? 'Too many upstream redirects' : 'Upstream redirect did not include a location');
+          error.code = 'EREDIRECT';
+          sendUpstreamFailure(response, error, context);
+          return;
+        }
+
+        let redirectUrl;
+        try {
+          redirectUrl = new URL(location, parsedUrl);
+        } catch {
+          const error = new Error('Upstream returned an invalid redirect location');
+          error.code = 'EREDIRECT';
+          sendUpstreamFailure(response, error, context);
+          return;
+        }
+        if (redirectUrl.protocol !== 'http:' && redirectUrl.protocol !== 'https:') {
+          const error = new Error('Upstream redirect used an unsupported protocol');
+          error.code = 'EREDIRECT';
+          sendUpstreamFailure(response, error, context);
+          return;
+        }
+        requestUpstream(
+          redirectUrl,
+          getRedirectHeaders(requestHeaders, parsedUrl, redirectUrl),
+          redirectCount + 1,
+        );
+        return;
+      }
+
+      const contentType = upstream.headers['content-type'] || 'application/octet-stream';
+      if (statusCode >= 300) {
+        recordTileFailure(context, `status=${statusCode}`);
+        upstream.resume();
+        sendJson(response, statusCode >= 400 ? statusCode : 502, {
+          error: 'upstream_error',
+          reason: 'upstream_unreachable',
+          status: statusCode,
+        });
+        return;
+      }
+
+      response.writeHead(statusCode, {
+        'access-control-allow-origin': '*',
+        'cache-control': TILE_CACHE_CONTROL,
+        'content-type': contentType,
+      });
+      upstream.pipe(response);
+    });
+    activeRequest = upstreamRequest;
+    upstreamRequest.setTimeout(UPSTREAM_REQUEST_TIMEOUT_MS, () => {
+      const error = new Error(`Upstream request timed out after ${UPSTREAM_REQUEST_TIMEOUT_MS}ms`);
+      error.code = 'ETIMEDOUT';
+      upstreamRequest.destroy(error);
+    });
+    upstreamRequest.on('error', (error) => {
       sendUpstreamFailure(response, error, context);
     });
+  };
 
-    const contentType = upstream.headers['content-type'] || 'application/octet-stream';
-
-    if ((upstream.statusCode || 500) >= 400) {
-      recordTileFailure(context, `status=${upstream.statusCode || 500}`);
-      let body = '';
-      upstream.setEncoding('utf8');
-      upstream.on('data', (chunk) => {
-        body += chunk;
-      });
-      upstream.on('end', () => {
-        sendJson(response, upstream.statusCode || 502, {
-          error: 'upstream_error',
-          status: upstream.statusCode,
-          message: body.slice(0, 1000),
-        });
-      });
-      return;
-    }
-
-    response.writeHead(upstream.statusCode || 200, {
-      'access-control-allow-origin': '*',
-      'cache-control': TILE_CACHE_CONTROL,
-      'content-type': contentType,
-    });
-    upstream.pipe(response);
-  });
+  requestUpstream(upstreamUrl, headers, 0);
 
   response.on('close', () => {
     if (response.writableEnded) return;
-    upstreamRequest.destroy();
+    activeRequest?.destroy();
     upstreamResponse?.destroy();
   });
+}
 
-  upstreamRequest.setTimeout(UPSTREAM_REQUEST_TIMEOUT_MS, () => {
-    const error = new Error(`Upstream request timed out after ${UPSTREAM_REQUEST_TIMEOUT_MS}ms`);
-    error.code = 'ETIMEDOUT';
-    upstreamRequest.destroy(error);
-  });
-
-  upstreamRequest.on('error', (error) => {
-    sendUpstreamFailure(response, error, context);
-  });
+function getRedirectHeaders(headers, fromUrl, toUrl) {
+  if (fromUrl.origin === toUrl.origin) return headers;
+  const sensitiveHeaders = new Set(['authorization', 'cookie', 'proxy-authorization']);
+  return Object.fromEntries(
+    Object.entries(headers).filter(([name]) => !sensitiveHeaders.has(name.toLowerCase())),
+  );
 }
 
 function sendUpstreamFailure(response, error, context = {}) {
@@ -397,7 +400,11 @@ function sendUpstreamFailure(response, error, context = {}) {
 
   const statusCode = error.code === 'ETIMEDOUT' ? 504 : 502;
   recordTileFailure(context, `error=${sanitizeLogToken(error.code || error.name || 'request_failed')}`);
-  sendJson(response, statusCode, { error: 'upstream_request_failed', message: error.message });
+  sendJson(response, statusCode, {
+    error: 'upstream_request_failed',
+    reason: 'upstream_unreachable',
+    message: 'Upstream tile request failed',
+  });
 }
 
 function recordTileFailure(context, reason) {
@@ -489,27 +496,59 @@ function requestJson({ method, url, headers, body }) {
 
 function buildHealth() {
   const providerStatus = buildProviderStatus();
-  const anyConfigured = Object.values(providerStatus).some((provider) => provider.configured);
+  const anyConfigured = Object.values(providerStatus).some((provider) => (
+    Object.values(provider.layers).some((layer) => layer.configured)
+  ));
   return {
     ok: anyConfigured,
     ready: anyConfigured,
-    status: anyConfigured ? 'ready' : 'No tile providers configured. Set GOOGLE_MAPS_API_KEY, MAPTILER_API_KEY, or CUSTOM_*_URL.',
+    status: anyConfigured ? 'ready' : 'No tile providers are configured.',
     timestamp: new Date().toISOString(),
     uptimeSeconds: Math.round(process.uptime()),
     providers: providerStatus,
+    providerIssues: customProviderIssues,
   };
 }
 
 function buildProviderStatus() {
-  return Object.fromEntries(
-    Object.entries(providers).map(([id, provider]) => [
-      id,
-      {
-        configured: provider.configured(),
-        layers: provider.layers,
-      },
-    ]),
-  );
+  return providerCatalog;
+}
+
+function loadCustomProviders() {
+  let source;
+  try {
+    source = fs.readFileSync(CUSTOM_PROVIDERS_PATH, 'utf8');
+  } catch (error) {
+    if (error?.code === 'ENOENT') {
+      logProxyInfo(`[${new Date().toISOString()}] [proxy] No custom-providers.json found; no custom providers loaded.`);
+      return { providers: [], issues: [] };
+    }
+    logCriticalError('Failed to read custom-providers.json', error);
+    return { providers: [], issues: [] };
+  }
+
+  let payload;
+  try {
+    payload = JSON.parse(source);
+  } catch (error) {
+    logCriticalError('Failed to parse custom-providers.json', error);
+    return { providers: [], issues: [] };
+  }
+
+  const { providers: customProviders, errors, issues } = parseCustomProviders(payload, process.env);
+  errors.forEach((message) => logCriticalError('Invalid custom provider configuration', new Error(message)));
+  if (customProviders.length === 0) {
+    logProxyInfo(`[${new Date().toISOString()}] [proxy] custom-providers.json loaded with no valid providers.`);
+  } else {
+    const summary = customProviders.map((provider) => ({
+      id: provider.id,
+      label: provider.label,
+      layer: Object.keys(provider.layers)[0],
+      configured: provider.missingEnvironment?.length === 0,
+    }));
+    logProxyInfo(`[${new Date().toISOString()}] [proxy] Loaded custom providers: ${safeJson(summary)}`);
+  }
+  return { providers: customProviders, issues };
 }
 
 function setCorsHeaders(response) {

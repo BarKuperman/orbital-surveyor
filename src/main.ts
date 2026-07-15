@@ -69,7 +69,9 @@ class OrbitalSurveyorMod {
     if (!map || !this.mapLayers || !this.store) return;
 
     this.mapLayers.setMap(map as ReadyMap);
-    this.mapLayers.setSettings(this.store.getSnapshot().effectiveSettings);
+    const snapshot = this.store.getSnapshot();
+    this.mapLayers.setProviderCatalog(snapshot.providerCatalog);
+    this.mapLayers.setSettings(snapshot.effectiveSettings);
   }
 
   onGameEnd(): void {
@@ -89,17 +91,20 @@ class OrbitalSurveyorMod {
   }
 
   private handleStoreSnapshot(snapshot: SurveyorSnapshot): void {
+    this.mapLayers?.setProviderCatalog(snapshot.providerCatalog);
     this.applySettings(snapshot.effectiveSettings);
     this.notifyProxyOutageIfNeeded(snapshot);
   }
 
   private notifyProxyOutageIfNeeded(snapshot: SurveyorSnapshot): void {
+    const proxyReady = !snapshot.proxyError &&
+      Boolean(snapshot.proxyHealth?.ok && (snapshot.proxyHealth.ready ?? true));
     const overlaySuppressed =
       (snapshot.settings.satelliteEnabled && !snapshot.effectiveSettings.satelliteEnabled) ||
       (snapshot.settings.terrainEnabled && !snapshot.effectiveSettings.terrainEnabled) ||
       (snapshot.settings.streetViewEnabled && !snapshot.effectiveSettings.streetViewEnabled);
 
-    if (!overlaySuppressed) {
+    if (!overlaySuppressed || proxyReady) {
       this.proxyOutageNotified = false;
       return;
     }

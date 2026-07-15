@@ -35,11 +35,17 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      - name: Test
+        run: pnpm test
+
       - name: Build mod
         run: pnpm build
 
       - name: Validate proxy syntax
-        run: node --check proxy.js
+        run: node --check dist/proxy.js
+
+      - name: Validate provider artifacts
+        run: pnpm check:artifacts
 
       - name: Prepare release package
         shell: bash

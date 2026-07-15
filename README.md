@@ -28,7 +28,7 @@ The panel includes a proxy status area at the bottom. If the proxy is not reacha
 
 ## Optional Setup
 
-Create a file named `.env` next to `proxy.js` if you want provider API keys, custom tile URLs, or a custom proxy port. You can copy or rename `.env.example` to `.env` and edit the values.
+Create a file named `.env` next to `proxy.js` if you want provider API keys or custom proxy settings. You can copy or rename `.env.example` to `.env` and edit the values. Restart the proxy after changing this file.
 
 Add a MapTiler key if you want MapTiler imagery or terrain:
 
@@ -91,6 +91,8 @@ The proxy defaults to `http://127.0.0.1:8787` and exposes:
 
 Provider API keys are read only by `proxy.js` from environment variables or `.env`. The default satellite provider and default terrain provider do not require API keys.
 
+`GET /providers` and the `providers` field in `GET /health` expose safe catalog metadata: provider labels, selectable layers, configuration state, attribution, tile sizes, zoom limits, and terrain encoding. Upstream URL templates, request headers, environment mappings, and resolved secrets remain proxy-only.
+
 The proxy writes session logs under `logs/` in the mod folder:
 
 - `logs/proxy-current.log`
@@ -108,16 +110,18 @@ pnpm build
 pnpm dev:link
 ```
 
-Enable the mod in Subway Builder under Settings > Mods. Start the proxy before enabling satellite or terrain overlays in-game.
+Run `pnpm proxy` in a separate terminal, enable the mod in Subway Builder under Settings > Mods, and start the proxy before enabling satellite or terrain overlays in-game.
 
-Release builds copy `proxy.js`, `.env.example`, and the one-click proxy launchers into `dist/` alongside the mod files.
+Release builds bundle the root `proxy.js` and shared provider registry into `dist/proxy.js`. They also copy `.env.example`, `custom-providers.example.json`, and the one-click proxy launchers alongside the mod files. User-owned `.env` and `custom-providers.json` files are never packaged or overwritten.
 
 Useful checks:
 
 ```bash
 pnpm typecheck
+pnpm test
 pnpm build
-node --check proxy.js
+pnpm check:artifacts
+node --check dist/proxy.js
 ```
 
 ## Providers
@@ -135,7 +139,37 @@ Built-in provider IDs:
 - `maptiler`: Optional MapTiler provider requiring `MAPTILER_API_KEY`; uses `satellite-v4` for imagery and `terrain-rgb-v2` DEM tiles for MapLibre 3D terrain.
 - `google`: Optional Google Map Tiles API satellite tiles requiring `GOOGLE_MAPS_API_KEY`.
 - `streetview`: Google Street View availability overlay through the local proxy.
-- `custom`: Optional XYZ templates from `CUSTOM_SATELLITE_URL` and `CUSTOM_TERRAIN_URL`.
+
+### Custom providers
+
+To add providers, copy `custom-providers.example.json` to `custom-providers.json` beside `proxy.js`. The real file is user-owned, ignored by Git, and excluded from releases so updating the mod does not replace it. Restart the proxy after editing it.
+
+The former `CUSTOM_SATELLITE_URL` and `CUSTOM_TERRAIN_URL` variables are no longer supported. Migrate those templates into named entries in `custom-providers.json`.
+
+Each entry defines exactly one `satellite` or `terrain` provider. It requires a unique lowercase kebab-case `id`, a display `label`, an HTTP(S) `url` containing `{z}`, `{x}`, and `{y}`, and an `attribution`. `tileSize` may be 256 or 512, `maxZoom` may be 0 through 24, and terrain entries must set `encoding` to `mapbox` or `terrarium`.
+
+Secrets stay in `.env`. Map a template placeholder to an environment variable, then use that placeholder in the URL or headers:
+
+```json
+{
+  "id": "secured-imagery",
+  "label": "Secured Imagery",
+  "layer": "satellite",
+  "url": "https://tiles.example.com/{z}/{x}/{y}?key={apiKey}",
+  "environment": {
+    "apiKey": "SECURED_IMAGERY_API_KEY"
+  },
+  "request": {
+    "headers": {
+      "Referer": "https://www.example.com/",
+      "Authorization": "Bearer {apiKey}"
+    }
+  },
+  "attribution": "Imagery © Example"
+}
+```
+
+Custom requests remain GET requests. Validated headers can provide Referer, Origin, User-Agent, Authorization, Cookie, Accept, or provider-specific values needed by an upstream service. Transport headers such as Host, Connection, Content-Length, Transfer-Encoding, and Upgrade are rejected. A provider with a missing environment value remains visible but unavailable in the panel.
 
 Orbital Surveyor's source code is licensed under MIT. Third-party map tiles,
 imagery, terrain data, and Street View availability data remain subject to their

@@ -1,17 +1,13 @@
 import manifest from '../manifest.json';
+import {
+  DEFAULT_SATELLITE_PROVIDER,
+  DEFAULT_TERRAIN_PROVIDER,
+} from './providers';
 
 export const MOD_ID = manifest.id;
 export const MOD_NAME = manifest.name;
 export const MOD_VERSION = manifest.version;
 export const TAG = '[OrbitalSurveyor]';
-
-export type ProviderLayer = 'satellite' | 'terrain';
-
-export type ProviderOption = {
-  id: string;
-  label: string;
-  layers: ProviderLayer[];
-};
 
 export const CITY_LAYER_GROUPS = [
   { key: 'buildings', label: 'Buildings', layers: ['buildings-3d'] },
@@ -47,71 +43,13 @@ export const DEFAULT_CITY_LAYERS = CITY_LAYER_GROUPS.reduce((visibility, group) 
   return visibility;
 }, {} as CityLayerVisibility);
 
-export const PROVIDERS: ProviderOption[] = [
-  {
-    id: 'google-sat',
-    label: 'Google Satellite',
-    layers: ['satellite'],
-  },
-  {
-    id: 'google-hybrid',
-    label: 'Google Hybrid',
-    layers: ['satellite'],
-  },
-  {
-    id: 'google-road',
-    label: 'Google Roads',
-    layers: ['satellite'],
-  },
-  {
-    id: 'google-dark',
-    label: 'Google Dark',
-    layers: ['satellite'],
-  },
-  {
-    id: 'google-transit',
-    label: 'Google Transit',
-    layers: ['satellite'],
-  },
-  {
-    id: 'esri',
-    label: 'Esri World Imagery',
-    layers: ['satellite'],
-  },
-  {
-    id: 'osm',
-    label: 'OpenStreetMap',
-    layers: ['satellite'],
-  },
-  {
-    id: 'google',
-    label: 'Google Map Tiles (API key)',
-    layers: ['satellite'],
-  },
-  {
-    id: 'maptiler',
-    label: 'MapTiler (API key)',
-    layers: ['satellite', 'terrain'],
-  },
-  {
-    id: 'mapterhorn',
-    label: 'Mapterhorn',
-    layers: ['terrain'],
-  },
-  {
-    id: 'custom',
-    label: 'Custom Proxy',
-    layers: ['satellite', 'terrain'],
-  },
-];
-
 export const DEFAULT_SETTINGS: SurveyorSettings = {
   proxyBaseUrl: DEFAULT_PROXY_BASE_URL,
   satelliteEnabled: false,
   terrainEnabled: false,
   streetViewEnabled: false,
-  satelliteProvider: 'google-sat',
-  terrainProvider: 'mapterhorn',
+  satelliteProvider: DEFAULT_SATELLITE_PROVIDER,
+  terrainProvider: DEFAULT_TERRAIN_PROVIDER,
   satelliteOpacity: 1,
   terrainExaggeration: 1.4,
   cityLayers: { ...DEFAULT_CITY_LAYERS },
@@ -134,7 +72,7 @@ export function mergeSettings(value: unknown): SurveyorSettings {
     terrainEnabled: normalizeBoolean(input.terrainEnabled, DEFAULT_SETTINGS.terrainEnabled),
     streetViewEnabled: normalizeBoolean(input.streetViewEnabled, DEFAULT_SETTINGS.streetViewEnabled),
     satelliteProvider: normalizeSatelliteProvider(input.satelliteProvider, input),
-    terrainProvider: normalizeProvider(input.terrainProvider, 'terrain', DEFAULT_SETTINGS.terrainProvider),
+    terrainProvider: normalizeProvider(input.terrainProvider, DEFAULT_SETTINGS.terrainProvider),
     satelliteOpacity: normalizeOpacity(input.satelliteOpacity, DEFAULT_SETTINGS.satelliteOpacity),
     terrainExaggeration: normalizeExaggeration(
       input.terrainExaggeration ?? input.terrainOpacity,
@@ -158,14 +96,12 @@ function normalizeSatelliteProvider(
 
   return looksLikeOldDefault
     ? DEFAULT_SETTINGS.satelliteProvider
-    : normalizeProvider(value, 'satellite', DEFAULT_SETTINGS.satelliteProvider);
+    : normalizeProvider(value, DEFAULT_SETTINGS.satelliteProvider);
 }
 
-function normalizeProvider(value: unknown, layer: ProviderLayer, fallback: string): string {
+function normalizeProvider(value: unknown, fallback: string): string {
   if (typeof value !== 'string' || !value) return fallback;
-  return PROVIDERS.some((provider) => provider.id === value && provider.layers.includes(layer))
-    ? value
-    : fallback;
+  return value;
 }
 
 type LegacySettings = {

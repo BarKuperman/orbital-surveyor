@@ -22,6 +22,7 @@ export default defineConfig({
       fileName: () => 'index.js',
     },
     outDir: 'dist',
+    emptyOutDir: false,
     minify: false,
     rollupOptions: {
       output: {
@@ -37,11 +38,11 @@ export default defineConfig({
           dest: '.',
         },
         {
-          src: 'proxy.js',
+          src: '.env.example',
           dest: '.',
         },
         {
-          src: '.env.example',
+          src: 'custom-providers.example.json',
           dest: '.',
         },
         {

@@ -1,14 +1,20 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   CITY_LAYER_GROUPS,
   DEFAULT_CITY_LAYERS,
   DEFAULT_PROXY_BASE_URL,
-  PROVIDERS,
   normalizeProxyBaseUrl,
-  type ProviderLayer,
   type SurveyorSettings,
 } from '../config';
-import type { SurveyorSnapshot, SurveyorStore } from '../state';
+import { resolveSelectedProviderAvailability, type SurveyorSnapshot, type SurveyorStore } from '../state';
+import {
+  formatProviderAvailabilityReason,
+  isProviderLayerConfigured,
+  type ProviderAvailabilityReason,
+  type ProviderCatalog,
+  type ProviderIssue,
+  type SelectableProviderLayer,
+} from '../providers';
 
 const api = window.SubwayBuilderAPI;
 type Component = (props: Record<string, unknown>) => unknown;
@@ -47,10 +53,24 @@ export function SurveyorPanel({ store, onSettingsChange }: Props) {
     setProxyDraft(snapshot.settings.proxyBaseUrl);
   }, [snapshot.settings.proxyBaseUrl]);
 
-  const satelliteProviders = useMemo(() => filterProviders('satellite'), []);
-  const terrainProviders = useMemo(() => filterProviders('terrain'), []);
+  const satelliteProviders = filterProviders(
+    snapshot.providerCatalog,
+    'satellite',
+    snapshot.settings.satelliteProvider,
+    snapshot.proxyHealth?.providerIssues,
+  );
+  const terrainProviders = filterProviders(
+    snapshot.providerCatalog,
+    'terrain',
+    snapshot.settings.terrainProvider,
+    snapshot.proxyHealth?.providerIssues,
+  );
   const proxyStatus = formatProxyStatus(snapshot);
   const proxyReady = proxyStatus.ok;
+  const satelliteAvailability = resolveSelectedProviderAvailability(snapshot, 'satellite');
+  const terrainAvailability = resolveSelectedProviderAvailability(snapshot, 'terrain');
+  const streetViewReady = proxyReady &&
+    isProviderLayerConfigured(snapshot.providerCatalog, 'streetview', 'availability');
 
   const updateSettings = (patch: Partial<SurveyorSettings>) => {
     void store.updateSettings(patch).then(() => onSettingsChange(store.getSnapshot().effectiveSettings));
@@ -124,11 +144,11 @@ export function SurveyorPanel({ store, onSettingsChange }: Props) {
           snapshot.effectiveSettings.satelliteEnabled,
           'Imagery visible',
           'Imagery hidden',
-          proxyStatus.label,
+          satelliteAvailability.reason,
         )}
         icon={SatelliteIcon}
         enabled={snapshot.effectiveSettings.satelliteEnabled}
-        disabled={!proxyReady}
+        disabled={!satelliteAvailability.ready}
         open={satelliteOpen}
         onOpenChange={setSatelliteOpen}
         onEnabledChange={(satelliteEnabled) => updateSettings({ satelliteEnabled })}
@@ -157,11 +177,11 @@ export function SurveyorPanel({ store, onSettingsChange }: Props) {
           snapshot.effectiveSettings.terrainEnabled,
           '3D terrain enabled',
           '3D terrain disabled',
-          proxyStatus.label,
+          terrainAvailability.reason,
         )}
         icon={TerrainIcon}
         enabled={snapshot.effectiveSettings.terrainEnabled}
-        disabled={!proxyReady}
+        disabled={!terrainAvailability.ready}
         open={terrainOpen}
         onOpenChange={setTerrainOpen}
         onEnabledChange={(terrainEnabled) => updateSettings({ terrainEnabled })}
@@ -194,7 +214,7 @@ export function SurveyorPanel({ store, onSettingsChange }: Props) {
         )}
         icon={StreetViewIcon}
         enabled={snapshot.effectiveSettings.streetViewEnabled}
-        disabled={!proxyReady}
+        disabled={!streetViewReady}
         onEnabledChange={(streetViewEnabled) => updateSettings({ streetViewEnabled })}
       />
 
@@ -429,7 +449,12 @@ function ProviderSelect({
 }: {
   label: string;
   value: string;
-  options: Array<{ id: string; label: string }>;
+  options: Array<{
+    id: string;
+    label: string;
+    configured: boolean;
+    availabilityReason?: ProviderAvailabilityReason;
+  }>;
   onChange: (value: string) => void;
 }) {
   return (
@@ -440,11 +465,23 @@ function ProviderSelect({
         value={value}
         onChange={(event: { target: { value: string } }) => onChange(event.target.value)}
       >
-        {options.map((provider) => (
-          <option key={provider.id} value={provider.id} label={provider.label}>
-            {provider.label}
-          </option>
-        ))}
+        {options.map((provider) => {
+          const displayLabel = provider.configured
+            ? provider.label
+            : `${provider.label} (${formatProviderAvailabilityReason(
+              provider.availabilityReason ?? 'provider_unavailable',
+            )})`;
+          return (
+            <option
+              key={provider.id}
+              value={provider.id}
+              label={displayLabel}
+              disabled={!provider.configured}
+            >
+              {displayLabel}
+            </option>
+          );
+        })}
       </select>
     </div>
   );
@@ -490,10 +527,43 @@ function RangeControl({
   );
 }
 
-function filterProviders(layer: ProviderLayer): Array<{ id: string; label: string }> {
-  return PROVIDERS
-    .filter((provider) => provider.layers.includes(layer))
-    .map((provider) => ({ id: provider.id, label: provider.label }));
+function filterProviders(
+  catalog: ProviderCatalog,
+  layer: SelectableProviderLayer,
+  selectedId: string,
+  providerIssues: ProviderIssue[] = [],
+): Array<{
+  id: string;
+  label: string;
+  configured: boolean;
+  availabilityReason?: ProviderAvailabilityReason;
+}> {
+  const options = Object.values(catalog)
+    .filter((provider) => provider.selectable && provider.layers[layer])
+    .map((provider) => ({
+      id: provider.id,
+      label: provider.label,
+      configured: provider.layers[layer]?.configured === true,
+      availabilityReason: provider.layers[layer]?.availabilityReason,
+    }));
+  for (const issue of providerIssues) {
+    if (issue.layer !== layer || options.some((provider) => provider.id === issue.id)) continue;
+    options.push({
+      id: issue.id,
+      label: issue.label,
+      configured: false,
+      availabilityReason: issue.reason,
+    });
+  }
+  if (!options.some((provider) => provider.id === selectedId)) {
+    options.push({
+      id: selectedId,
+      label: selectedId,
+      configured: false,
+      availabilityReason: 'provider_unavailable',
+    });
+  }
+  return options;
 }
 
 function formatProxyStatus(snapshot: SurveyorSnapshot): { ok: boolean; label: string } {

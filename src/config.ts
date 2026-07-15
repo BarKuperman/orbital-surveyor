@@ -16,8 +16,8 @@ export type ProviderOption = {
 export const CITY_LAYER_GROUPS = [
   { key: 'buildings', label: 'Buildings', layers: ['buildings-3d'] },
   { key: 'water', label: 'Water', layers: ['water', 'ocean-depth-labels', 'general-tiles'] },
-  { key: 'parks', label: 'Parks', layers: ['parks-large', 'parks-small','parks-modded'] },
-  { key: 'roads', label: 'Roads', layers: ['road-labels', 'intersections-layer', 'road-lines'] },
+  { key: 'parks', label: 'Parks', layers: ['parks-large', 'parks-small','parks-modded','commercial'] },
+  { key: 'roads', label: 'Roads', layers: ['road-labels', 'intersections-layer', 'road-lines','road-bridge-casing','road-bridge-fill'] },
   { key: 'airports', label: 'Airports', layers: ['airports','runways-taxiways','airports-modded'] },
   { key: 'areaLabels', label: 'Area labels', layers: ['neighborhood-labels', 'suburb-labels', 'city-labels'] },
 ] as const;
@@ -33,6 +33,7 @@ export type SurveyorSettings = {
   streetViewEnabled: boolean;
   satelliteProvider: string;
   terrainProvider: string;
+  satelliteOpacity: number;
   terrainExaggeration: number;
   cityLayers: CityLayerVisibility;
 };
@@ -111,6 +112,7 @@ export const DEFAULT_SETTINGS: SurveyorSettings = {
   streetViewEnabled: false,
   satelliteProvider: 'google-sat',
   terrainProvider: 'mapterhorn',
+  satelliteOpacity: 1,
   terrainExaggeration: 1.4,
   cityLayers: { ...DEFAULT_CITY_LAYERS },
 };
@@ -133,6 +135,7 @@ export function mergeSettings(value: unknown): SurveyorSettings {
     streetViewEnabled: normalizeBoolean(input.streetViewEnabled, DEFAULT_SETTINGS.streetViewEnabled),
     satelliteProvider: normalizeSatelliteProvider(input.satelliteProvider, input),
     terrainProvider: normalizeProvider(input.terrainProvider, 'terrain', DEFAULT_SETTINGS.terrainProvider),
+    satelliteOpacity: normalizeOpacity(input.satelliteOpacity, DEFAULT_SETTINGS.satelliteOpacity),
     terrainExaggeration: normalizeExaggeration(
       input.terrainExaggeration ?? input.terrainOpacity,
       DEFAULT_SETTINGS.terrainExaggeration,
@@ -172,6 +175,11 @@ type LegacySettings = {
 
 function normalizeBoolean(value: unknown, fallback: boolean): boolean {
   return typeof value === 'boolean' ? value : fallback;
+}
+
+function normalizeOpacity(value: unknown, fallback: number): number {
+  if (typeof value !== 'number' || Number.isNaN(value)) return fallback;
+  return Math.min(1, Math.max(0, value));
 }
 
 function normalizeExaggeration(value: unknown, fallback: number): number {

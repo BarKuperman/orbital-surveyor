@@ -1,4 +1,11 @@
 import { DEFAULT_SETTINGS, MOD_ID, mergeSettings, type SurveyorSettings } from './config';
+import {
+  BUILTIN_PROVIDER_CATALOG,
+  isProviderLayerConfigured,
+  mergeProviderCatalog,
+  type ProviderCatalog,
+  type SelectableProviderLayer,
+} from './providers';
 import type { ModdingAPI } from './types/api';
 
 export type ProxyHealth = {
@@ -7,12 +14,13 @@ export type ProxyHealth = {
   status: string;
   timestamp?: string;
   uptimeSeconds?: number;
-  providers: Record<string, { configured: boolean; layers: string[]; status?: string }>;
+  providers: ProviderCatalog;
 };
 
 export type SurveyorSnapshot = {
   settings: SurveyorSettings;
   effectiveSettings: SurveyorSettings;
+  providerCatalog: ProviderCatalog;
   proxyHealth: ProxyHealth | null;
   proxyError: string | null;
 };
@@ -32,6 +40,7 @@ export class SurveyorStore {
   private settings: SurveyorSettings = { ...DEFAULT_SETTINGS };
   private proxyHealth: ProxyHealth | null = null;
   private proxyError: string | null = null;
+  private providerCatalog: ProviderCatalog = { ...BUILTIN_PROVIDER_CATALOG };
   private listeners = new Set<Listener>();
   private healthTimer: number | null = null;
   private healthRetryTimer: number | null = null;
@@ -64,13 +73,14 @@ export class SurveyorStore {
     return {
       settings: { ...this.settings },
       effectiveSettings: this.getEffectiveSettings(),
+      providerCatalog: this.providerCatalog,
       proxyHealth: this.proxyHealth,
       proxyError: this.proxyError,
     };
   }
 
   getEffectiveSettings(): SurveyorSettings {
-    return applyOverlayAvailability(this.settings, this.proxyHealth, this.proxyError);
+    return applyOverlayAvailability(this.settings, this.proxyHealth, this.proxyError, this.providerCatalog);
   }
 
   subscribe(listener: Listener): () => void {
@@ -85,6 +95,7 @@ export class SurveyorStore {
       this.healthFailureCount = 0;
       this.proxyHealth = null;
       this.proxyError = null;
+      this.providerCatalog = { ...BUILTIN_PROVIDER_CATALOG };
       this.clearHealthRetry();
     }
     this.emit();
@@ -130,6 +141,7 @@ export class SurveyorStore {
       this.healthFailureCount = 0;
       this.clearHealthRetry();
       this.proxyHealth = payload;
+      this.providerCatalog = mergeProviderCatalog(payload.providers);
       this.proxyError = response.ok ? null : `Proxy returned ${response.status}`;
     } catch (error) {
       const wasReady = isProxyHealthReady(this.proxyHealth, this.proxyError);
@@ -170,14 +182,37 @@ export function applyOverlayAvailability(
   settings: SurveyorSettings,
   proxyHealth: ProxyHealth | null,
   proxyError: string | null,
+  providerCatalog: ProviderCatalog = BUILTIN_PROVIDER_CATALOG,
 ): SurveyorSettings {
   const availability = resolveOverlayAvailability(proxyHealth, proxyError);
   return {
     ...settings,
-    satelliteEnabled: settings.satelliteEnabled && availability.proxyReady,
-    terrainEnabled: settings.terrainEnabled && availability.proxyReady,
-    streetViewEnabled: settings.streetViewEnabled && availability.proxyReady,
+    satelliteEnabled: settings.satelliteEnabled && availability.proxyReady &&
+      isProviderLayerConfigured(providerCatalog, settings.satelliteProvider, 'satellite'),
+    terrainEnabled: settings.terrainEnabled && availability.proxyReady &&
+      isProviderLayerConfigured(providerCatalog, settings.terrainProvider, 'terrain'),
+    streetViewEnabled: settings.streetViewEnabled && availability.proxyReady &&
+      isProviderLayerConfigured(providerCatalog, 'streetview', 'availability'),
   };
+}
+
+export function resolveSelectedProviderAvailability(
+  snapshot: SurveyorSnapshot,
+  layer: SelectableProviderLayer,
+): { ready: boolean; reason: string } {
+  const proxy = resolveOverlayAvailability(snapshot.proxyHealth, snapshot.proxyError);
+  if (!proxy.proxyReady) return { ready: false, reason: proxy.proxyReason };
+  const providerId = layer === 'satellite'
+    ? snapshot.settings.satelliteProvider
+    : snapshot.settings.terrainProvider;
+  const provider = snapshot.providerCatalog[providerId];
+  if (!provider?.layers[layer]?.configured) {
+    return {
+      ready: false,
+      reason: provider ? `${provider.label} is not configured` : `Provider "${providerId}" is unavailable`,
+    };
+  }
+  return { ready: true, reason: 'Ready' };
 }
 
 export function resolveOverlayAvailability(

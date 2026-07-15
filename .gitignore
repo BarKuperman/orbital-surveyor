@@ -3,6 +3,7 @@ dist/
 debug/
 *.log
 .env
+custom-providers.json
 .DS_Store
 .claude/
 AGENTS.md

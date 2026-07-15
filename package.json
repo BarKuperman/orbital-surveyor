@@ -5,10 +5,15 @@
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
-    "build": "vite build",
+    "build": "pnpm build:mod && pnpm build:proxy",
+    "build:mod": "vite build",
+    "build:proxy": "vite build --config vite.proxy.config.ts",
+    "check:artifacts": "node scripts/check-provider-artifacts.mjs",
     "dev": "concurrently -k -n build,game -c blue,green \"vite build --watch\" \"tsx scripts/run.ts\"",
     "dev:link": "tsx scripts/link.ts",
     "dev:unlink": "tsx scripts/link.ts --unlink",
+    "proxy": "tsx proxy.js",
+    "test": "tsx --test tests/providers.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "keywords": [

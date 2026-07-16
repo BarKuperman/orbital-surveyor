@@ -1,7 +1,10 @@
 import manifest from '../manifest.json';
 import {
+  DEFAULT_RAILWAY_STYLE,
   DEFAULT_SATELLITE_PROVIDER,
   DEFAULT_TERRAIN_PROVIDER,
+  RAILWAY_STYLES,
+  type RailwayStyle,
 } from './providers';
 
 export const MOD_ID = manifest.id;
@@ -27,9 +30,13 @@ export type SurveyorSettings = {
   satelliteEnabled: boolean;
   terrainEnabled: boolean;
   streetViewEnabled: boolean;
+  railwayEnabled: boolean;
   satelliteProvider: string;
   terrainProvider: string;
+  railwayStyle: RailwayStyle;
+  railwayAboveTracks: boolean;
   satelliteOpacity: number;
+  railwayOpacity: number;
   terrainExaggeration: number;
   cityLayers: CityLayerVisibility;
 };
@@ -48,9 +55,13 @@ export const DEFAULT_SETTINGS: SurveyorSettings = {
   satelliteEnabled: false,
   terrainEnabled: false,
   streetViewEnabled: false,
+  railwayEnabled: false,
   satelliteProvider: DEFAULT_SATELLITE_PROVIDER,
   terrainProvider: DEFAULT_TERRAIN_PROVIDER,
+  railwayStyle: DEFAULT_RAILWAY_STYLE,
+  railwayAboveTracks: false,
   satelliteOpacity: 1,
+  railwayOpacity: 1,
   terrainExaggeration: 1.4,
   cityLayers: { ...DEFAULT_CITY_LAYERS },
 };
@@ -71,15 +82,25 @@ export function mergeSettings(value: unknown): SurveyorSettings {
     satelliteEnabled: normalizeBoolean(input.satelliteEnabled, DEFAULT_SETTINGS.satelliteEnabled),
     terrainEnabled: normalizeBoolean(input.terrainEnabled, DEFAULT_SETTINGS.terrainEnabled),
     streetViewEnabled: normalizeBoolean(input.streetViewEnabled, DEFAULT_SETTINGS.streetViewEnabled),
+    railwayEnabled: normalizeBoolean(input.railwayEnabled, DEFAULT_SETTINGS.railwayEnabled),
     satelliteProvider: normalizeSatelliteProvider(input.satelliteProvider, input),
     terrainProvider: normalizeProvider(input.terrainProvider, DEFAULT_SETTINGS.terrainProvider),
+    railwayStyle: normalizeRailwayStyle(input.railwayStyle),
+    railwayAboveTracks: normalizeBoolean(input.railwayAboveTracks, DEFAULT_SETTINGS.railwayAboveTracks),
     satelliteOpacity: normalizeOpacity(input.satelliteOpacity, DEFAULT_SETTINGS.satelliteOpacity),
+    railwayOpacity: normalizeOpacity(input.railwayOpacity, DEFAULT_SETTINGS.railwayOpacity),
     terrainExaggeration: normalizeExaggeration(
       input.terrainExaggeration ?? input.terrainOpacity,
       DEFAULT_SETTINGS.terrainExaggeration,
     ),
     cityLayers: normalizeCityLayers(input.cityLayers),
   };
+}
+
+function normalizeRailwayStyle(value: unknown): RailwayStyle {
+  return RAILWAY_STYLES.some((style) => style.id === value)
+    ? value as RailwayStyle
+    : DEFAULT_SETTINGS.railwayStyle;
 }
 
 function normalizeSatelliteProvider(

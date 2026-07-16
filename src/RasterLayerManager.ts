@@ -2,6 +2,7 @@ import { CITY_LAYER_GROUPS, MOD_ID, type SurveyorSettings } from './config';
 import {
   BUILTIN_PROVIDER_CATALOG,
   getProviderLayer,
+  getRailwayProviderId,
   type ProviderCatalog,
   type ProviderCatalogLayer,
   type ProviderLayer,
@@ -36,6 +37,8 @@ const SATELLITE_LAYER_ID = `${MOD_ID}:satellite-layer`;
 const STREET_VIEW_SOURCE_ID = `${MOD_ID}:street-view-source`;
 const STREET_VIEW_LAYER_ID = `${MOD_ID}:street-view-layer`;
 const TERRAIN_DEM_SOURCE_ID = `${MOD_ID}:terrain-dem-source`;
+const RAILWAY_SOURCE_ID = `${MOD_ID}:railway-source`;
+const RAILWAY_LAYER_ID = `${MOD_ID}:railway-layer`;
 const GAME_BASE_SOURCE_IDS = ['general-tiles'];
 const GAME_CONTROLLED_LABEL_LAYERS = new Set(['ocean-depth-labels']);
 const CITY_LAYER_ANCHORS = CITY_LAYER_GROUPS.flatMap((group) => group.layers);
@@ -70,9 +73,11 @@ type LayerDefinition = {
   layerName: ProviderLayer;
   tileSize: 256 | 512;
   maxzoom?: number;
+  minzoom?: number;
   opacity: number;
   visible: boolean;
   attribution?: string;
+  beforeId?: string | null;
 };
 
 type TerrainDefinition = {
@@ -139,6 +144,7 @@ export class RasterLayerManager {
     this.restoreCityLayerVisibility();
     this.disableTerrain();
     this.removeSource(TERRAIN_DEM_SOURCE_ID);
+    this.removeLayer(RAILWAY_LAYER_ID, RAILWAY_SOURCE_ID);
     this.removeLayer(STREET_VIEW_LAYER_ID, STREET_VIEW_SOURCE_ID);
     this.removeLayer(SATELLITE_LAYER_ID, SATELLITE_SOURCE_ID);
     this.lastSourceKeys.clear();
@@ -208,6 +214,8 @@ export class RasterLayerManager {
     );
     const streetViewProfile = getProviderLayer(this.providerCatalog, 'streetview', 'availability');
     const terrainProfile = getProviderLayer(this.providerCatalog, this.settings.terrainProvider, 'terrain');
+    const railwayProviderId = getRailwayProviderId(this.settings.railwayStyle);
+    const railwayProfile = getProviderLayer(this.providerCatalog, railwayProviderId, 'railway');
 
     this.ensureRasterLayer({
       sourceId: SATELLITE_SOURCE_ID,
@@ -231,6 +239,21 @@ export class RasterLayerManager {
       opacity: 1,
       visible: this.settings.streetViewEnabled && Boolean(streetViewProfile),
       attribution: streetViewProfile?.attribution,
+      beforeId: this.findBeforeStreetViewLayerId(),
+    });
+
+    this.ensureRasterLayer({
+      sourceId: RAILWAY_SOURCE_ID,
+      layerId: RAILWAY_LAYER_ID,
+      providerId: railwayProviderId,
+      layerName: 'railway',
+      tileSize: railwayProfile?.tileSize ?? 256,
+      minzoom: 2,
+      maxzoom: railwayProfile?.maxZoom,
+      opacity: this.settings.railwayOpacity,
+      visible: this.settings.railwayEnabled && Boolean(railwayProfile),
+      attribution: railwayProfile?.attribution,
+      beforeId: this.resolveRailwayBeforeLayerId() ?? null,
     });
 
     this.ensureTerrain({
@@ -256,6 +279,10 @@ export class RasterLayerManager {
       this.removeLayer(STREET_VIEW_LAYER_ID, STREET_VIEW_SOURCE_ID);
       this.lastSourceKeys.delete(STREET_VIEW_SOURCE_ID);
     }
+    if (!this.settings.railwayEnabled) {
+      this.removeLayer(RAILWAY_LAYER_ID, RAILWAY_SOURCE_ID);
+      this.lastSourceKeys.delete(RAILWAY_SOURCE_ID);
+    }
     if (!this.settings.terrainEnabled) {
       this.disableTerrain();
       this.removeSource(TERRAIN_DEM_SOURCE_ID);
@@ -272,7 +299,7 @@ export class RasterLayerManager {
       return;
     }
 
-    const sourceKey = `${this.settings.proxyBaseUrl}|${definition.providerId}|${definition.layerName}|${definition.tileSize}|${definition.maxzoom ?? 'default'}|${definition.attribution ?? ''}`;
+    const sourceKey = `${this.settings.proxyBaseUrl}|${definition.providerId}|${definition.layerName}|${definition.tileSize}|${definition.minzoom ?? 'default'}|${definition.maxzoom ?? 'default'}|${definition.attribution ?? ''}`;
     if (this.lastSourceKeys.get(definition.sourceId) !== sourceKey) {
       this.removeLayer(definition.layerId, definition.sourceId);
       this.lastSourceKeys.set(definition.sourceId, sourceKey);
@@ -283,6 +310,7 @@ export class RasterLayerManager {
         type: 'raster',
         tiles: [this.buildTileUrl(definition.providerId, definition.layerName)],
         tileSize: definition.tileSize,
+        ...(definition.minzoom !== undefined ? { minzoom: definition.minzoom } : {}),
         ...(definition.maxzoom !== undefined ? { maxzoom: definition.maxzoom } : {}),
         attribution: definition.attribution,
       })) {
@@ -303,7 +331,7 @@ export class RasterLayerManager {
             'raster-opacity': definition.opacity,
           },
         },
-        this.findBeforeLayerId(),
+        definition.beforeId === null ? undefined : definition.beforeId ?? this.findBeforeLayerId(),
       );
     } else {
       this.setLayoutProperty(
@@ -386,15 +414,20 @@ export class RasterLayerManager {
     if (this.hasLayer(STREET_VIEW_LAYER_ID)) {
       this.moveLayer(STREET_VIEW_LAYER_ID, this.findBeforeStreetViewLayerId());
     }
+    if (this.hasLayer(RAILWAY_LAYER_ID)) {
+      this.moveLayer(RAILWAY_LAYER_ID, this.resolveRailwayBeforeLayerId());
+    }
   }
 
   private applyCityLayerVisibility(): void {
     if (!this.map || !this.settings) return;
-    const overlayActive = this.settings.satelliteEnabled || this.settings.terrainEnabled;
+    if (!this.settings.satelliteEnabled) {
+      this.restoreCityLayerVisibility();
+      return;
+    }
 
     CITY_LAYER_GROUPS.forEach((group) => {
       group.layers.forEach((layerId) => {
-        if (!overlayActive) return;
         this.filteredGameLayers.add(layerId);
         this.setGameLayerVisibility(
           layerId,
@@ -402,10 +435,6 @@ export class RasterLayerManager {
         );
       });
     });
-
-    if (!overlayActive) {
-      this.restoreCityLayerVisibility();
-    }
   }
 
   private restoreCityLayerVisibility(): void {
@@ -449,6 +478,13 @@ export class RasterLayerManager {
       this.warnOnce('getStyle:streetView', '[OrbitalSurveyor] Failed to inspect map style for Street View ordering', error);
       return undefined;
     }
+  }
+
+  private resolveRailwayBeforeLayerId(): string | undefined {
+    const layerId = this.settings?.railwayAboveTracks
+      ? 'building-collision'
+      : 'construction-tracks-base';
+    return this.hasLayer(layerId) ? layerId : this.findBeforeLayerId();
   }
 
   private removeLayer(layerId: string, sourceId: string): void {
@@ -695,6 +731,7 @@ export class RasterLayerManager {
     const isProxySource =
       sourceId === SATELLITE_SOURCE_ID ||
       sourceId === STREET_VIEW_SOURCE_ID ||
+      sourceId === RAILWAY_SOURCE_ID ||
       sourceId === TERRAIN_DEM_SOURCE_ID;
 
     const proxyTilePrefix = `${this.settings.proxyBaseUrl}/tiles/`;
@@ -870,6 +907,14 @@ export class RasterLayerManager {
         this.providerCatalog,
         this.settings.terrainProvider,
         'terrain',
+      )?.attribution;
+      if (attribution) attributions.add(attribution);
+    }
+    if (this.settings.railwayEnabled) {
+      const attribution = getProviderLayer(
+        this.providerCatalog,
+        getRailwayProviderId(this.settings.railwayStyle),
+        'railway',
       )?.attribution;
       if (attribution) attributions.add(attribution);
     }

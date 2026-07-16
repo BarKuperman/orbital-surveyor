@@ -2,6 +2,7 @@ import { DEFAULT_SETTINGS, MOD_ID, mergeSettings, type SurveyorSettings } from '
 import {
   BUILTIN_PROVIDER_CATALOG,
   formatProviderAvailabilityReason,
+  getRailwayProviderId,
   isProviderLayerConfigured,
   mergeProviderCatalog,
   normalizeProviderIssues,
@@ -224,6 +225,8 @@ export function applyOverlayAvailability(
       isProviderLayerConfigured(providerCatalog, settings.terrainProvider, 'terrain'),
     streetViewEnabled: settings.streetViewEnabled && availability.proxyReady &&
       isProviderLayerConfigured(providerCatalog, 'streetview', 'availability'),
+    railwayEnabled: settings.railwayEnabled && availability.proxyReady &&
+      isProviderLayerConfigured(providerCatalog, getRailwayProviderId(settings.railwayStyle), 'railway'),
   };
 }
 
@@ -309,5 +312,6 @@ function resetOverlayEnabledSettings(settings: SurveyorSettings): SurveyorSettin
     satelliteEnabled: false,
     terrainEnabled: false,
     streetViewEnabled: false,
+    railwayEnabled: false,
   };
 }

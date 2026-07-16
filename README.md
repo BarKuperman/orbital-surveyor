@@ -1,6 +1,6 @@
 # Orbital Surveyor
 
-Subway Builder mod that adds satellite imagery, Street View, and 3D terrain to the in-game MapLibre map.
+Subway Builder mod that adds satellite imagery, OpenRailwayMap railway data, Street View, and 3D terrain to the in-game MapLibre map.
 
 ## User Guide
 
@@ -12,17 +12,25 @@ Subway Builder mod that adds satellite imagery, Street View, and 3D terrain to t
    - macOS: `start-proxy-macos.command`
    - Linux: `start-proxy-linux.sh`
 
-   On Linux, if the launcher is not executable yet, run:
+   On Linux/Mac, if the launcher is not executable yet, run in the mod folder:
+
+   Linux:
 
    ```bash
    chmod +x start-proxy-linux.sh
+   ```
+
+   Mac:
+
+   ```bash
+   chmod +x start-proxy-macos.command
    ```
 
    You can also run `node proxy.js` manually from a terminal.
 
 4. Leave the proxy window open while playing.
 5. Enable Orbital Surveyor in Subway Builder under Settings > Mods.
-6. Open the Orbital Surveyor panel in-game and enable Satellite, Terrain, or Street View as needed.
+6. Open the Orbital Surveyor panel in-game and enable Satellite, Terrain, Railway Overlay, or Street View as needed.
 
 The panel includes a proxy status area at the bottom. If the proxy is not reachable after repeated health checks, overlay toggles are disabled, active overlay layers are removed, and an in-game warning is shown once per outage. If the proxy comes back during the same map session, previously requested overlays can restore after health becomes ready again.
 
@@ -47,11 +55,21 @@ Add a Google Maps key if you want the Google Map Tiles API provider:
 
 The Satellite section includes an opacity slider with 1% adjustments from fully transparent to fully opaque. The selected opacity is saved with the other mod settings and applies to every satellite imagery provider.
 
+## Railway Overlay
+
+The Railway Overlay section appears below Terrain in the Orbital Surveyor panel. Expand it to choose one OpenRailwayMap style, adjust its opacity in 1% increments and choose whether it would show above or below tracks:
+
+- Standard railway infrastructure
+- Signals and train-protection systems
+- Maximum speeds and speed signals
+- Electrification systems and signals
+- Track gauges
+
 ## Map Layer Filtering
 
-The Orbital Surveyor panel is scrollable and includes a Map layers section for controlling built-in game layers while an overlay mode is active.
+The Orbital Surveyor panel is scrollable and includes a Map layers section for controlling built-in game layers while Satellite is active.
 
-Map layer switches are off by default so satellite and terrain overlays are easier to see. Turn a switch on to show that specific game layer above the overlay. When overlay modes are off, the game controls its own layer visibility again, and the mod only restores layers it hid itself.
+Map layer switches are off by default so satellite imagery is easier to see. Turn a switch on to show that specific game layer above the imagery. Terrain, Railway Overlay, and Street View do not change game-layer visibility. When Satellite is off, the game controls its own layer visibility again, and the mod only restores layers it hid itself.
 
 Controlled layer IDs:
 
@@ -139,6 +157,7 @@ Built-in provider IDs:
 - `maptiler`: Optional MapTiler provider requiring `MAPTILER_API_KEY`; uses `satellite-v4` for imagery and `terrain-rgb-v2` DEM tiles for MapLibre 3D terrain.
 - `google`: Optional Google Map Tiles API satellite tiles requiring `GOOGLE_MAPS_API_KEY`.
 - `streetview`: Google Street View availability overlay through the local proxy.
+- `openrailwaymap`: OpenRailwayMap railway infrastructure overlay.
 
 ### Custom providers
 

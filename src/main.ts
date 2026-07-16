@@ -102,7 +102,8 @@ class OrbitalSurveyorMod {
     const overlaySuppressed =
       (snapshot.settings.satelliteEnabled && !snapshot.effectiveSettings.satelliteEnabled) ||
       (snapshot.settings.terrainEnabled && !snapshot.effectiveSettings.terrainEnabled) ||
-      (snapshot.settings.streetViewEnabled && !snapshot.effectiveSettings.streetViewEnabled);
+      (snapshot.settings.streetViewEnabled && !snapshot.effectiveSettings.streetViewEnabled) ||
+      (snapshot.settings.railwayEnabled && !snapshot.effectiveSettings.railwayEnabled);
 
     if (!overlaySuppressed || proxyReady) {
       this.proxyOutageNotified = false;

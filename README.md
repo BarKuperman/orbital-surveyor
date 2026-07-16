@@ -12,10 +12,18 @@ Subway Builder mod that adds satellite imagery, OpenRailwayMap railway data, Str
    - macOS: `start-proxy-macos.command`
    - Linux: `start-proxy-linux.sh`
 
-   On Linux, if the launcher is not executable yet, run:
+   On Linux/Mac, if the launcher is not executable yet, run in the mod folder:
+
+   Linux:
 
    ```bash
    chmod +x start-proxy-linux.sh
+   ```
+
+   Mac:
+
+   ```bash
+   chmod +x start-proxy-macos.command
    ```
 
    You can also run `node proxy.js` manually from a terminal.

@@ -2,7 +2,7 @@
   "id": "orbital-surveyor",
   "name": "Orbital Surveyor",
   "description": "Adds satellite, railway, and terrain raster overlays through a local tile proxy.",
-  "version": "1.1.2",
+  "version": "1.2.0",
   "author": {
     "name": "BarKuperman",
     "url": "https://github.com/BarKuperman/"

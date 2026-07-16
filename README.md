@@ -67,9 +67,9 @@ The Railway Overlay section appears below Terrain in the Orbital Surveyor panel.
 
 ## Map Layer Filtering
 
-The Orbital Surveyor panel is scrollable and includes a Map layers section for controlling built-in game layers while an overlay mode is active.
+The Orbital Surveyor panel is scrollable and includes a Map layers section for controlling built-in game layers while Satellite is active.
 
-Map layer switches are off by default so satellite and terrain overlays are easier to see. Turn a switch on to show that specific game layer above the overlay. When overlay modes are off, the game controls its own layer visibility again, and the mod only restores layers it hid itself.
+Map layer switches are off by default so satellite imagery is easier to see. Turn a switch on to show that specific game layer above the imagery. Terrain, Railway Overlay, and Street View do not change game-layer visibility. When Satellite is off, the game controls its own layer visibility again, and the mod only restores layers it hid itself.
 
 Controlled layer IDs:
 

@@ -421,11 +421,13 @@ export class RasterLayerManager {
 
   private applyCityLayerVisibility(): void {
     if (!this.map || !this.settings) return;
-    const overlayActive = this.settings.satelliteEnabled || this.settings.terrainEnabled;
+    if (!this.settings.satelliteEnabled) {
+      this.restoreCityLayerVisibility();
+      return;
+    }
 
     CITY_LAYER_GROUPS.forEach((group) => {
       group.layers.forEach((layerId) => {
-        if (!overlayActive) return;
         this.filteredGameLayers.add(layerId);
         this.setGameLayerVisibility(
           layerId,
@@ -433,10 +435,6 @@ export class RasterLayerManager {
         );
       });
     });
-
-    if (!overlayActive) {
-      this.restoreCityLayerVisibility();
-    }
   }
 
   private restoreCityLayerVisibility(): void {

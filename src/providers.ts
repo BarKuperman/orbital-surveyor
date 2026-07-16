@@ -1,6 +1,15 @@
-export type ProviderLayer = 'satellite' | 'terrain' | 'availability';
+export type ProviderLayer = 'satellite' | 'terrain' | 'availability' | 'railway';
 export type SelectableProviderLayer = 'satellite' | 'terrain';
 export type TerrainEncoding = 'mapbox' | 'terrarium';
+export const RAILWAY_STYLES = [
+  { id: 'standard', label: 'Standard', providerId: 'openrailwaymap-standard' },
+  { id: 'signals', label: 'Signals', providerId: 'openrailwaymap-signals' },
+  { id: 'maxspeed', label: 'Maximum speed', providerId: 'openrailwaymap-maxspeed' },
+  { id: 'electrification', label: 'Electrification', providerId: 'openrailwaymap-electrification' },
+  { id: 'gauge', label: 'Track gauge', providerId: 'openrailwaymap-gauge' },
+] as const;
+export type RailwayStyle = typeof RAILWAY_STYLES[number]['id'];
+export const DEFAULT_RAILWAY_STYLE: RailwayStyle = 'standard';
 export type ProviderAvailabilityReason =
   | 'missing_environment'
   | 'invalid_configuration'
@@ -44,6 +53,7 @@ export type ProviderResolver =
   | { kind: 'mapterhorn' }
   | { kind: 'esri' }
   | { kind: 'osm' }
+  | { kind: 'openrailwaymap'; style: RailwayStyle }
   | { kind: 'custom-template'; urlTemplate: string; headers: Record<string, string> };
 
 export type ProviderDefinition = {
@@ -61,6 +71,12 @@ const googleRaster = (attribution = 'Tiles © Google'): ProviderLayerMetadata =>
   attribution,
   tileSize: 256,
 });
+
+const railwayRaster: ProviderLayerMetadata = {
+  attribution: '© OpenStreetMap contributors | Style © OpenRailwayMap (CC BY-SA 2.0)',
+  tileSize: 256,
+  maxZoom: 19,
+};
 
 export const BUILTIN_PROVIDERS: readonly ProviderDefinition[] = [
   {
@@ -120,6 +136,13 @@ export const BUILTIN_PROVIDERS: readonly ProviderDefinition[] = [
     layers: { satellite: { attribution: 'Tiles © OpenStreetMap contributors', tileSize: 256, maxZoom: 19 } },
     resolver: { kind: 'osm' },
   },
+  ...RAILWAY_STYLES.map((style) => ({
+    id: style.providerId,
+    label: `OpenRailwayMap ${style.label}`,
+    selectable: false,
+    layers: { railway: railwayRaster },
+    resolver: { kind: 'openrailwaymap' as const, style: style.id },
+  })),
   {
     id: 'google',
     label: 'Google Map Tiles (API key)',
@@ -154,6 +177,11 @@ export const BUILTIN_PROVIDERS: readonly ProviderDefinition[] = [
 export const DEFAULT_SATELLITE_PROVIDER = resolveDefaultProvider('satellite');
 export const DEFAULT_TERRAIN_PROVIDER = resolveDefaultProvider('terrain');
 export const BUILTIN_PROVIDER_CATALOG = createProviderCatalog(BUILTIN_PROVIDERS);
+
+export function getRailwayProviderId(style: RailwayStyle): string {
+  return RAILWAY_STYLES.find((candidate) => candidate.id === style)?.providerId ??
+    RAILWAY_STYLES[0].providerId;
+}
 
 const BLOCKED_REQUEST_HEADERS = new Set([
   'connection',
@@ -457,7 +485,7 @@ function normalizeCatalogEntry(id: string, value: unknown): ProviderCatalogEntry
   if (input.id !== id || typeof input.label !== 'string' || typeof input.selectable !== 'boolean') return null;
   if (!input.layers || typeof input.layers !== 'object' || Array.isArray(input.layers)) return null;
   const layers: ProviderCatalogEntry['layers'] = {};
-  for (const layer of ['satellite', 'terrain', 'availability'] as const) {
+  for (const layer of ['satellite', 'terrain', 'availability', 'railway'] as const) {
     const rawLayer = (input.layers as Record<string, unknown>)[layer];
     if (!rawLayer || typeof rawLayer !== 'object' || Array.isArray(rawLayer)) continue;
     const metadata = rawLayer as Record<string, unknown>;

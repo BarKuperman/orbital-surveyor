@@ -158,6 +158,9 @@ async function resolveTileUrl(provider, layer, z, x, y) {
   if (resolver.kind === 'osm') {
     return `https://tile.openstreetmap.org/${z}/${x}/${y}.png`;
   }
+  if (resolver.kind === 'openrailwaymap') {
+    return `https://tiles.openrailwaymap.org/${encodeURIComponent(resolver.style)}/${z}/${x}/${y}.png`;
+  }
   if (resolver.kind === 'custom-template') {
     return resolver.urlTemplate
       .replaceAll('{z}', z)
@@ -238,7 +241,7 @@ function getTileRequestHeaders(provider) {
   if (provider.resolver.kind === 'custom-template') {
     return provider.resolver.headers;
   }
-  if (provider.resolver.kind === 'osm') {
+  if (provider.resolver.kind === 'osm' || provider.resolver.kind === 'openrailwaymap') {
     return {
       'user-agent': OSM_USER_AGENT,
     };

@@ -3,7 +3,9 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
   BUILTIN_PROVIDERS,
+  RAILWAY_STYLES,
   createProviderCatalog,
+  getRailwayProviderId,
   mergeProviderCatalog,
   parseCustomProviders,
   resolveDefaultProvider,
@@ -16,6 +18,54 @@ test('built-in providers have unique ids and one default per selectable layer', 
   assert.equal(new Set(ids).size, ids.length);
   assert.equal(resolveDefaultProvider('satellite'), 'google-sat');
   assert.equal(resolveDefaultProvider('terrain'), 'mapterhorn');
+});
+
+test('OpenRailwayMap styles map to built-in railway providers', () => {
+  assert.deepEqual(RAILWAY_STYLES.map((style) => style.id), [
+    'standard',
+    'signals',
+    'maxspeed',
+    'electrification',
+    'gauge',
+  ]);
+
+  const catalog = createProviderCatalog(BUILTIN_PROVIDERS, {});
+  for (const style of RAILWAY_STYLES) {
+    const provider = BUILTIN_PROVIDERS.find((candidate) => candidate.id === style.providerId);
+    assert.equal(getRailwayProviderId(style.id), style.providerId);
+    assert.equal(provider?.resolver.kind, 'openrailwaymap');
+    assert.equal(catalog[style.providerId].layers.railway?.configured, true);
+    assert.equal(catalog[style.providerId].layers.railway?.tileSize, 256);
+    assert.equal(catalog[style.providerId].layers.railway?.maxZoom, 19);
+  }
+});
+
+test('railway settings normalize and unavailable railway providers suppress only that overlay', () => {
+  const invalid = mergeSettings({ ...DEFAULT_SETTINGS, railwayStyle: 'unknown' });
+  assert.equal(invalid.railwayStyle, 'standard');
+
+  const settings = mergeSettings({
+    ...DEFAULT_SETTINGS,
+    satelliteEnabled: true,
+    railwayEnabled: true,
+    railwayStyle: 'signals',
+    railwayOpacity: 2,
+  });
+  const catalog = createProviderCatalog(
+    BUILTIN_PROVIDERS.filter((provider) => provider.id !== 'openrailwaymap-signals'),
+    {},
+  );
+  const effective = applyOverlayAvailability(settings, {
+    ok: true,
+    ready: true,
+    status: 'ready',
+    providers: catalog,
+  }, null, catalog);
+
+  assert.equal(settings.railwayOpacity, 1);
+  assert.equal(mergeSettings({ ...DEFAULT_SETTINGS, railwayAboveTracks: true }).railwayAboveTracks, true);
+  assert.equal(effective.railwayEnabled, false);
+  assert.equal(effective.satelliteEnabled, true);
 });
 
 test('custom provider resolves URL secrets and request headers privately', () => {

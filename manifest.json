@@ -1,7 +1,7 @@
 {
   "id": "orbital-surveyor",
   "name": "Orbital Surveyor",
-  "description": "Adds satellite and terrain raster overlays through a local tile proxy.",
+  "description": "Adds satellite, railway, and terrain raster overlays through a local tile proxy.",
   "version": "1.1.2",
   "author": {
     "name": "BarKuperman",
@@ -11,5 +11,5 @@
   "dependencies": {
     "subway-builder": ">=1.2.0"
   },
-  "keywords": ["subway-builder", "mod", "satellite", "visual", "terrain"]
+  "keywords": ["subway-builder", "mod", "satellite", "railway", "visual", "terrain"]
 }

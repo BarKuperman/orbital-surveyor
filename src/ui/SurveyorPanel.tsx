@@ -9,7 +9,10 @@ import {
 import { resolveSelectedProviderAvailability, type SurveyorSnapshot, type SurveyorStore } from '../state';
 import {
   formatProviderAvailabilityReason,
+  getRailwayProviderId,
   isProviderLayerConfigured,
+  RAILWAY_STYLES,
+  type RailwayStyle,
   type ProviderAvailabilityReason,
   type ProviderCatalog,
   type ProviderIssue,
@@ -24,6 +27,7 @@ const icons = api.utils.icons as Record<string, Component>;
 const ChevronDown = icons.ChevronDown;
 const SatelliteIcon = icons.Satellite;
 const TerrainIcon = icons.Mountain;
+const TrainIcon = icons.Train ?? icons.Route ?? icons.Layers;
 const StreetViewIcon = icons.StreetView ?? icons.MapPin;
 const LayersIcon = icons.Layers;
 const layerIcons = {
@@ -45,6 +49,7 @@ export function SurveyorPanel({ store, onSettingsChange }: Props) {
   const [proxyDraft, setProxyDraft] = useState(snapshot.settings.proxyBaseUrl);
   const [satelliteOpen, setSatelliteOpen] = useState(snapshot.settings.satelliteEnabled);
   const [terrainOpen, setTerrainOpen] = useState(snapshot.settings.terrainEnabled);
+  const [railwayOpen, setRailwayOpen] = useState(snapshot.settings.railwayEnabled);
   const [layersOpen, setLayersOpen] = useState(false);
 
   useEffect(() => store.subscribe(() => setSnapshot(store.getSnapshot())), [store]);
@@ -71,6 +76,14 @@ export function SurveyorPanel({ store, onSettingsChange }: Props) {
   const terrainAvailability = resolveSelectedProviderAvailability(snapshot, 'terrain');
   const streetViewReady = proxyReady &&
     isProviderLayerConfigured(snapshot.providerCatalog, 'streetview', 'availability');
+  const railwayReady = proxyReady && isProviderLayerConfigured(
+    snapshot.providerCatalog,
+    getRailwayProviderId(snapshot.settings.railwayStyle),
+    'railway',
+  );
+  const railwayReason = proxyReady && !railwayReady
+    ? 'OpenRailwayMap style unavailable'
+    : proxyStatus.label;
 
   const updateSettings = (patch: Partial<SurveyorSettings>) => {
     void store.updateSettings(patch).then(() => onSettingsChange(store.getSnapshot().effectiveSettings));
@@ -204,6 +217,44 @@ export function SurveyorPanel({ store, onSettingsChange }: Props) {
       </OverlaySection>
 
       <OverlaySection
+        title="Railway Overlay"
+        description={formatOverlayDescription(
+          snapshot.settings.railwayEnabled,
+          snapshot.effectiveSettings.railwayEnabled,
+          'Railway overlay visible',
+          'Railway overlay hidden',
+          railwayReason,
+        )}
+        icon={TrainIcon}
+        enabled={snapshot.effectiveSettings.railwayEnabled}
+        disabled={!railwayReady}
+        open={railwayOpen}
+        onOpenChange={setRailwayOpen}
+        onEnabledChange={(railwayEnabled) => updateSettings({ railwayEnabled })}
+      >
+        <RailwayStyleSelect
+          value={snapshot.settings.railwayStyle}
+          onChange={(railwayStyle) => updateSettings({ railwayStyle })}
+        />
+        <div className="flex items-center justify-between gap-2">
+          <Label>Above tracks</Label>
+          <ToggleButton
+            checked={snapshot.settings.railwayAboveTracks}
+            onChange={(railwayAboveTracks) => updateSettings({ railwayAboveTracks })}
+          />
+        </div>
+        <RangeControl
+          label="Opacity"
+          value={snapshot.settings.railwayOpacity}
+          min={0}
+          max={1}
+          step={0.01}
+          formatValue={(value) => `${Math.round(value * 100)}%`}
+          onChange={(railwayOpacity) => updateSettings({ railwayOpacity })}
+        />
+      </OverlaySection>
+
+      <OverlaySection
         title="Street View"
         description={formatOverlayDescription(
           snapshot.settings.streetViewEnabled,
@@ -293,6 +344,29 @@ export function SurveyorPanel({ store, onSettingsChange }: Props) {
       >
         Open mod folder
       </Button>
+    </div>
+  );
+}
+
+function RailwayStyleSelect({
+  value,
+  onChange,
+}: {
+  value: RailwayStyle;
+  onChange: (value: RailwayStyle) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <Label>Style</Label>
+      <select
+        className="os-select"
+        value={value}
+        onChange={(event: { target: { value: string } }) => onChange(event.target.value as RailwayStyle)}
+      >
+        {RAILWAY_STYLES.map((style) => (
+          <option key={style.id} value={style.id}>{style.label}</option>
+        ))}
+      </select>
     </div>
   );
 }

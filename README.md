@@ -1,6 +1,6 @@
 # Orbital Surveyor
 
-Subway Builder mod that adds satellite imagery, Street View, and 3D terrain to the in-game MapLibre map.
+Subway Builder mod that adds satellite imagery, OpenRailwayMap railway data, Street View, and 3D terrain to the in-game MapLibre map.
 
 ## User Guide
 
@@ -22,7 +22,7 @@ Subway Builder mod that adds satellite imagery, Street View, and 3D terrain to t
 
 4. Leave the proxy window open while playing.
 5. Enable Orbital Surveyor in Subway Builder under Settings > Mods.
-6. Open the Orbital Surveyor panel in-game and enable Satellite, Terrain, or Street View as needed.
+6. Open the Orbital Surveyor panel in-game and enable Satellite, Terrain, Railway Overlay, or Street View as needed.
 
 The panel includes a proxy status area at the bottom. If the proxy is not reachable after repeated health checks, overlay toggles are disabled, active overlay layers are removed, and an in-game warning is shown once per outage. If the proxy comes back during the same map session, previously requested overlays can restore after health becomes ready again.
 
@@ -46,6 +46,16 @@ Add a Google Maps key if you want the Google Map Tiles API provider:
 ## Satellite Opacity
 
 The Satellite section includes an opacity slider with 1% adjustments from fully transparent to fully opaque. The selected opacity is saved with the other mod settings and applies to every satellite imagery provider.
+
+## Railway Overlay
+
+The Railway Overlay section appears below Terrain in the Orbital Surveyor panel. Expand it to choose one OpenRailwayMap style, adjust its opacity in 1% increments and choose whether it would show above or below tracks:
+
+- Standard railway infrastructure
+- Signals and train-protection systems
+- Maximum speeds and speed signals
+- Electrification systems and signals
+- Track gauges
 
 ## Map Layer Filtering
 
@@ -139,6 +149,7 @@ Built-in provider IDs:
 - `maptiler`: Optional MapTiler provider requiring `MAPTILER_API_KEY`; uses `satellite-v4` for imagery and `terrain-rgb-v2` DEM tiles for MapLibre 3D terrain.
 - `google`: Optional Google Map Tiles API satellite tiles requiring `GOOGLE_MAPS_API_KEY`.
 - `streetview`: Google Street View availability overlay through the local proxy.
+- `openrailwaymap`: OpenRailwayMap railway infrastructure overlay.
 
 ### Custom providers
 

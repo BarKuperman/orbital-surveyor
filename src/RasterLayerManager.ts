@@ -153,9 +153,9 @@ export class RasterLayerManager {
 
   destroy(): void {
     this.detachHandlers();
-    this.reset();
-    this.removeAttributionElement();
-    this.restoreSetStyle();
+    this.settings = null;
+    this.lastSourceKeys.clear();
+    this.filteredGameLayers.clear();
     this.map = null;
   }
 
